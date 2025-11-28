@@ -1,12 +1,45 @@
 const db = require('../config/database');
 
+// 股票类型映射：数字 -> 中文
+const STOCK_TYPE_MAP = {
+  1: 'A股',
+  2: '港股',
+  3: '美股'
+};
+
+// 股票类型反向映射：中文 -> 数字
+const STOCK_TYPE_REVERSE_MAP = {
+  'A股': 1,
+  '港股': 2,
+  '美股': 3
+};
+
 class StockService {
+  // 将数字转换为中文
+  convertStockTypeToText(type) {
+    if (typeof type === 'number') {
+      return STOCK_TYPE_MAP[type] || 'A股';
+    }
+    return type || 'A股';
+  }
+
+  // 将中文转换为数字
+  convertStockTypeToNumber(type) {
+    if (typeof type === 'string') {
+      return STOCK_TYPE_REVERSE_MAP[type] || 1;
+    }
+    return type || 1;
+  }
   // 获取所有股票
   async getAllStocks() {
     const [rows] = await db.execute(
       `SELECT * FROM stocks ORDER BY name ASC`
     );
-    return rows;
+    // 将数字转换为中文
+    return rows.map(row => ({
+      ...row,
+      stock_type: this.convertStockTypeToText(row.stock_type)
+    }));
   }
 
   // 根据ID获取股票
@@ -15,7 +48,11 @@ class StockService {
       `SELECT * FROM stocks WHERE id = ?`,
       [id]
     );
-    return rows[0] || null;
+    const stock = rows[0] || null;
+    if (stock) {
+      stock.stock_type = this.convertStockTypeToText(stock.stock_type);
+    }
+    return stock;
   }
 
   // 根据名称获取股票
@@ -24,26 +61,40 @@ class StockService {
       `SELECT * FROM stocks WHERE name = ?`,
       [name]
     );
-    return rows[0] || null;
+    const stock = rows[0] || null;
+    if (stock) {
+      stock.stock_type = this.convertStockTypeToText(stock.stock_type);
+    }
+    return stock;
   }
 
   // 创建股票
   async createStock(data) {
-    const { name } = data;
+    const { name, stock_type } = data;
 
     if (!name || !name.trim()) {
       throw new Error('股票名称不能为空');
     }
 
-    // 检查是否已存在
+    // 如果没有传递 stock_type，使用默认值 'A股'
+    const finalStockType = stock_type || 'A股';
+    
+    if (!['A股', '港股', '美股'].includes(finalStockType)) {
+      throw new Error('股票类型必须是 A股、港股 或 美股');
+    }
+
+    // 检查是否已存在（需要先转换，因为数据库存储的是数字）
     const existing = await this.getStockByName(name.trim());
     if (existing) {
       throw new Error('股票名称已存在');
     }
 
+    // 将中文转换为数字存储
+    const stockTypeNumber = this.convertStockTypeToNumber(finalStockType);
+
     const [result] = await db.execute(
-      `INSERT INTO stocks (name) VALUES (?)`,
-      [name.trim()]
+      `INSERT INTO stocks (name, stock_type) VALUES (?, ?)`,
+      [name.trim(), stockTypeNumber]
     );
 
     return await this.getStockById(result.insertId);
@@ -56,10 +107,14 @@ class StockService {
       return null;
     }
 
-    const { name } = data;
+    const { name, stock_type } = data;
 
     if (!name || !name.trim()) {
       throw new Error('股票名称不能为空');
+    }
+
+    if (stock_type && !['A股', '港股', '美股'].includes(stock_type)) {
+      throw new Error('股票类型必须是 A股、港股 或 美股');
     }
 
     // 检查新名称是否已被其他股票使用
@@ -68,9 +123,13 @@ class StockService {
       throw new Error('股票名称已被使用');
     }
 
+    // 将中文转换为数字存储
+    const finalStockType = stock_type || existing.stock_type || 'A股';
+    const stockTypeNumber = this.convertStockTypeToNumber(finalStockType);
+
     await db.execute(
-      `UPDATE stocks SET name = ? WHERE id = ?`,
-      [name.trim(), id]
+      `UPDATE stocks SET name = ?, stock_type = ? WHERE id = ?`,
+      [name.trim(), stockTypeNumber, id]
     );
 
     return await this.getStockById(id);
@@ -224,8 +283,12 @@ class StockService {
       }))
     ];
 
+    // 获取股票信息以确定股票类型
+    const stock = await this.getStockByName(stockName);
+    const stockType = stock ? stock.stock_type : 'A股';
+    
     // 计算已平仓的盈亏和开平仓明细
-    const closedProfitLossResult = this.calculateClosedProfitLossAndDetails(transactions);
+    const closedProfitLossResult = this.calculateClosedProfitLossAndDetails(transactions, stockType);
     const closedProfitLoss = closedProfitLossResult.totalProfitLoss;
     const closedPositions = closedProfitLossResult.closedPositions;
 
@@ -255,9 +318,9 @@ class StockService {
   }
 
   // 计算已平仓的盈亏和开平仓明细（使用最低成本法最大化收益）
-  calculateClosedProfitLossAndDetails(transactions) {
-    const buyPositions = []; // 可用买入持仓 {id, quantity, price, date}
-    const sellPositions = []; // 可用卖出持仓（空仓） {id, quantity, price, date}
+  calculateClosedProfitLossAndDetails(transactions, stockType = 'A股') {
+    const buyPositions = []; // 可用买入持仓 {id, quantity, price, date, commission}
+    const sellPositions = []; // 可用卖出持仓（空仓） {id, quantity, price, date, commission, tax}
     const closedPositions = []; // 已平仓明细
 
     for (const trans of transactions) {
@@ -281,8 +344,28 @@ class StockService {
           const shortPos = sellPositions[maxPriceIndex];
           const usedQty = Math.min(remainingBuyQty, shortPos.quantity);
           
-          // 计算平空仓盈亏
-          const profitLoss = (shortPos.price - parseFloat(trans.price)) * usedQty;
+          // 计算平空仓盈亏（包含手续费和税费）
+          const revenue = shortPos.price * usedQty; // 开空仓收入
+          const cost = parseFloat(trans.price) * usedQty; // 平空仓成本
+          
+          // 按比例计算开空仓手续费和税费
+          const sellRatio = usedQty / shortPos.quantity;
+          const shortCommission = (shortPos.commission || 0) * sellRatio;
+          const shortTax = (shortPos.tax || 0) * sellRatio;
+          
+          // 计算买入手续费
+          const buyAmount = cost;
+          let buyCommission = 0;
+          if (stockType === 'A股') {
+            buyCommission = buyAmount * 0.00015;
+          } else if (stockType === '港股') {
+            buyCommission = buyAmount * 0.0002;
+          } else if (stockType === '美股') {
+            buyCommission = (trans.commission || 0) * (usedQty / trans.quantity);
+          }
+          
+          // 平空仓盈亏 = 开空仓收入 - 平空仓成本 - 开空仓手续费（按比例） - 开空仓税费（按比例） - 买入手续费
+          const profitLoss = revenue - cost - shortCommission - shortTax - buyCommission;
           
           closedPositions.push({
             openDate: shortPos.date,
@@ -307,7 +390,8 @@ class StockService {
             id: trans.id,
             quantity: remainingBuyQty,
             price: parseFloat(trans.price),
-            date: trans.transaction_date
+            date: trans.transaction_date,
+            commission: (trans.commission || 0) * (remainingBuyQty / trans.quantity)
           };
           
           // 插入到合适位置（按价格从低到高排序）
@@ -337,8 +421,30 @@ class StockService {
           const longPos = buyPositions[0];
           const usedQty = Math.min(remainingSellQty, longPos.quantity);
           
-          // 计算平多仓盈亏
-          const profitLoss = (parseFloat(trans.price) - longPos.price) * usedQty;
+          // 计算平多仓盈亏（包含手续费和税费）
+          const sellAmount = parseFloat(trans.price) * usedQty; // 卖出金额
+          const buyCost = longPos.price * usedQty; // 买入成本
+          
+          // 按比例计算买入手续费
+          const buyRatio = usedQty / longPos.quantity;
+          const buyCommission = (longPos.commission || 0) * buyRatio;
+          
+          // 计算卖出手续费和税费
+          let sellCommission = 0;
+          let sellTax = 0;
+          if (stockType === 'A股') {
+            sellCommission = sellAmount * 0.00015;
+            sellTax = sellAmount * 0.00005; // 只有卖出才收税费
+          } else if (stockType === '港股') {
+            sellCommission = sellAmount * 0.0002;
+            sellTax = sellAmount * 0.001;
+          } else if (stockType === '美股') {
+            sellCommission = (trans.commission || 0) * (usedQty / trans.quantity);
+            sellTax = 0;
+          }
+          
+          // 平多仓盈亏 = 卖出金额 - 买入成本 - 买入手续费（按比例） - 卖出手续费 - 卖出税费
+          const profitLoss = sellAmount - buyCost - buyCommission - sellCommission - sellTax;
           
           closedPositions.push({
             openDate: longPos.date,
@@ -363,7 +469,9 @@ class StockService {
             id: trans.id,
             quantity: remainingSellQty,
             price: parseFloat(trans.price),
-            date: trans.transaction_date
+            date: trans.transaction_date,
+            commission: (trans.commission || 0) * (remainingSellQty / trans.quantity),
+            tax: (trans.tax || 0) * (remainingSellQty / trans.quantity)
           };
           
           // 插入到合适位置（按价格从高到低排序）

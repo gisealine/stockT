@@ -7,7 +7,7 @@ const StockManagement = ({ onBack }) => {
   const [error, setError] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editingStock, setEditingStock] = useState(null);
-  const [formData, setFormData] = useState({ name: '' });
+  const [formData, setFormData] = useState({ name: '', stock_type: 'A股' });
   const [saving, setSaving] = useState(false);
 
   // 加载股票列表
@@ -36,6 +36,10 @@ const StockManagement = ({ onBack }) => {
       setError('股票名称不能为空');
       return;
     }
+    if (!formData.stock_type) {
+      setError('请选择股票类型');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -47,7 +51,7 @@ const StockManagement = ({ onBack }) => {
       }
       setShowForm(false);
       setEditingStock(null);
-      setFormData({ name: '' });
+      setFormData({ name: '', stock_type: 'A股' });
       await loadStocks();
     } catch (err) {
       setError(err.response?.data?.message || '保存股票失败');
@@ -73,7 +77,7 @@ const StockManagement = ({ onBack }) => {
   // 处理编辑
   const handleEdit = (stock) => {
     setEditingStock(stock);
-    setFormData({ name: stock.name });
+    setFormData({ name: stock.name, stock_type: stock.stock_type || 'A股' });
     setShowForm(true);
   };
 
@@ -81,7 +85,7 @@ const StockManagement = ({ onBack }) => {
   const handleCancel = () => {
     setShowForm(false);
     setEditingStock(null);
-    setFormData({ name: '' });
+    setFormData({ name: '', stock_type: 'A股' });
   };
 
   return (
@@ -107,19 +111,36 @@ const StockManagement = ({ onBack }) => {
           <div style={{ marginBottom: '20px', padding: '20px', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
             <h3>{editingStock ? '编辑股票' : '添加股票'}</h3>
             <form onSubmit={handleSave}>
-              <div className="form-group">
-                <label htmlFor="stock_name">
-                  股票名称 <span style={{ color: 'red' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  id="stock_name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ name: e.target.value })}
-                  placeholder="例如：平安银行"
-                  maxLength="100"
-                  style={{ width: '100%', padding: '10px', fontSize: '16px' }}
-                />
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="stock_name">
+                    股票名称 <span style={{ color: 'red' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="stock_name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="例如：平安银行"
+                    maxLength="100"
+                    style={{ width: '100%', padding: '10px', fontSize: '16px' }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="stock_type">
+                    股票类型 <span style={{ color: 'red' }}>*</span>
+                  </label>
+                  <select
+                    id="stock_type"
+                    value={formData.stock_type}
+                    onChange={(e) => setFormData({ ...formData, stock_type: e.target.value })}
+                    style={{ width: '100%', padding: '10px', fontSize: '16px' }}
+                  >
+                    <option value="A股">A股</option>
+                    <option value="港股">港股</option>
+                    <option value="美股">美股</option>
+                  </select>
+                </div>
               </div>
               <div style={{ marginTop: '15px' }}>
                 <button type="button" className="button" onClick={handleCancel} disabled={saving}>
@@ -144,6 +165,7 @@ const StockManagement = ({ onBack }) => {
                 <tr>
                   <th>ID</th>
                   <th>股票名称</th>
+                  <th>股票类型</th>
                   <th>创建时间</th>
                   <th>操作</th>
                 </tr>
@@ -153,6 +175,11 @@ const StockManagement = ({ onBack }) => {
                   <tr key={stock.id}>
                     <td>{stock.id}</td>
                     <td><strong>{stock.name}</strong></td>
+                    <td>
+                      <span className="badge" style={{ backgroundColor: '#667eea', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}>
+                        {stock.stock_type || 'A股'}
+                      </span>
+                    </td>
                     <td>{new Date(stock.created_at).toLocaleString('zh-CN')}</td>
                     <td>
                       <button

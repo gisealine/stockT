@@ -16,10 +16,12 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
     price: '',
     transaction_date: new Date(),
     notes: '',
+    commission: '',
   });
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [loadingStocks, setLoadingStocks] = useState(true);
+  const [selectedStock, setSelectedStock] = useState(null);
 
   // 加载股票列表
   useEffect(() => {
@@ -46,9 +48,25 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
         price: transaction.price || '',
         transaction_date: transaction.transaction_date ? new Date(transaction.transaction_date) : new Date(),
         notes: transaction.notes || '',
+        commission: transaction.commission || '',
       });
+      // 设置选中的股票信息
+      const stock = stocks.find(s => s.name === transaction.stock_name);
+      if (stock) {
+        setSelectedStock(stock);
+      }
     }
-  }, [transaction]);
+  }, [transaction, stocks]);
+
+  // 当选择股票时，更新selectedStock
+  useEffect(() => {
+    if (formData.stock_name) {
+      const stock = stocks.find(s => s.name === formData.stock_name);
+      setSelectedStock(stock || null);
+    } else {
+      setSelectedStock(null);
+    }
+  }, [formData.stock_name, stocks]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -72,6 +90,38 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
     }));
   };
 
+  // 计算手续费和税费（仅用于显示）
+  const calculateCommissionAndTax = () => {
+    if (!selectedStock || !formData.quantity || !formData.price) {
+      return { commission: 0, tax: 0 };
+    }
+
+    const totalAmount = parseFloat(formData.quantity) * parseFloat(formData.price);
+    const stockType = selectedStock.stock_type;
+    const transactionType = formData.transaction_type;
+
+    let commission = 0;
+    let tax = 0;
+
+    if (stockType === 'A股') {
+      commission = totalAmount * 0.00015; // 万1.5
+      if (transactionType === 'SELL') {
+        tax = totalAmount * 0.00005; // 万分之5
+      }
+    } else if (stockType === '港股') {
+      commission = totalAmount * 0.0002; // 万2
+      tax = totalAmount * 0.001; // 千分之1
+    } else if (stockType === '美股') {
+      commission = parseFloat(formData.commission) || 0;
+      tax = 0;
+    }
+
+    return {
+      commission: parseFloat(commission.toFixed(2)),
+      tax: parseFloat(tax.toFixed(2))
+    };
+  };
+
   const validate = () => {
     const newErrors = {};
 
@@ -89,6 +139,13 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
 
     if (!formData.transaction_date) {
       newErrors.transaction_date = '请选择交易日期';
+    }
+
+    // 美股需要验证手续费
+    if (selectedStock && selectedStock.stock_type === '美股') {
+      if (!formData.commission || parseFloat(formData.commission) < 0) {
+        newErrors.commission = '请输入有效的手续费（美股必填）';
+      }
     }
 
     setErrors(newErrors);
@@ -110,6 +167,14 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
         price: parseFloat(formData.price),
         transaction_date: formatDate(formData.transaction_date),
       };
+      
+      // 只有美股才传递commission，其他类型由后端自动计算
+      if (selectedStock && selectedStock.stock_type === '美股') {
+        submitData.commission = parseFloat(formData.commission) || 0;
+      } else {
+        delete submitData.commission;
+      }
+      
       await onSave(submitData);
       // 保存成功后重置表单
       setFormData({
@@ -119,7 +184,9 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
         price: '',
         transaction_date: new Date(),
         notes: '',
+        commission: '',
       });
+      setSelectedStock(null);
       setErrors({});
     } catch (err) {
       console.error('保存失败:', err);
@@ -247,6 +314,57 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
             {errors.price && <div style={{ color: 'red', fontSize: '14px', marginTop: '5px' }}>{errors.price}</div>}
           </div>
         </div>
+
+        {/* 手续费和税费 */}
+        {selectedStock && formData.quantity && formData.price && (
+          <div className="form-row">
+            {selectedStock.stock_type === '美股' ? (
+              <div className="form-group">
+                <label htmlFor="commission">
+                  手续费（元） <span style={{ color: 'red' }}>*</span>
+                </label>
+                <input
+                  type="number"
+                  id="commission"
+                  name="commission"
+                  value={formData.commission}
+                  onChange={handleChange}
+                  placeholder="请输入手续费"
+                  min="0"
+                  step="0.01"
+                />
+                {errors.commission && <div style={{ color: 'red', fontSize: '14px', marginTop: '5px' }}>{errors.commission}</div>}
+              </div>
+            ) : (
+              <>
+                <div className="form-group">
+                  <label>手续费（元）</label>
+                  <div style={{ padding: '10px', backgroundColor: '#f0f0f0', borderRadius: '4px', fontSize: '16px' }}>
+                    ¥{calculateCommissionAndTax().commission.toFixed(2)}
+                    <span style={{ fontSize: '12px', color: '#666', marginLeft: '5px' }}>
+                      ({selectedStock.stock_type === 'A股' ? '万1.5' : '万2'})
+                    </span>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>税费（元）</label>
+                  <div style={{ padding: '10px', backgroundColor: '#f0f0f0', borderRadius: '4px', fontSize: '16px' }}>
+                    {calculateCommissionAndTax().tax > 0 ? (
+                      <>
+                        ¥{calculateCommissionAndTax().tax.toFixed(2)}
+                        <span style={{ fontSize: '12px', color: '#666', marginLeft: '5px' }}>
+                          ({selectedStock.stock_type === 'A股' ? '万分之5（仅卖出）' : '千分之1'})
+                        </span>
+                      </>
+                    ) : (
+                      <span style={{ color: '#999' }}>无</span>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         <div className="form-group">
           <label htmlFor="notes">备注</label>

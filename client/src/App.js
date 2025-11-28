@@ -146,6 +146,7 @@ function App() {
                     <thead>
                       <tr>
                         <th>股票名称</th>
+                        <th>股票类型</th>
                         <th>买入金额</th>
                         <th>卖出金额</th>
                         <th>累计盈亏</th>
@@ -162,6 +163,11 @@ function App() {
                         return (
                           <tr key={stock.id}>
                             <td><strong>{stock.name}</strong></td>
+                            <td>
+                              <span className="badge" style={{ backgroundColor: '#667eea', color: 'white', padding: '4px 8px', borderRadius: '4px', fontSize: '12px' }}>
+                                {stock.stock_type || 'A股'}
+                              </span>
+                            </td>
                             <td>¥{formatCurrency(stat.total_buy_amount)}</td>
                             <td>¥{formatCurrency(stat.total_sell_amount)}</td>
                             <td>

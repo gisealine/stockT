@@ -213,6 +213,8 @@ const StockDetail = ({ stockName, onBack }) => {
                     <th>数量（股）</th>
                     <th>价格</th>
                     <th>总金额</th>
+                    <th>手续费</th>
+                    <th>税费</th>
                     <th>操作</th>
                   </tr>
                 </thead>
@@ -228,6 +230,8 @@ const StockDetail = ({ stockName, onBack }) => {
                       <td>{transaction.quantity}</td>
                       <td>¥{formatCurrency(transaction.price)}</td>
                       <td>¥{formatCurrency(transaction.total_amount)}</td>
+                      <td>¥{formatCurrency(transaction.commission)}</td>
+                      <td>¥{formatCurrency(transaction.tax)}</td>
                       <td>
                         <button
                           className="button button-danger"

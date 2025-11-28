@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const stockService = require('./stockService');
 
 class TransactionService {
   // 获取所有交易记录，按日期倒序
@@ -110,6 +111,33 @@ class TransactionService {
   }
 
   // 创建交易记录并计算盈亏
+  // 计算手续费和税费
+  calculateCommissionAndTax(stockType, transactionType, totalAmount, commission = null) {
+    let calculatedCommission = 0;
+    let calculatedTax = 0;
+
+    if (stockType === 'A股') {
+      // A股：手续费万1.5（买入卖出都收），税费万分之5（只有卖出收）
+      calculatedCommission = totalAmount * 0.00015; // 万1.5
+      if (transactionType === 'SELL') {
+        calculatedTax = totalAmount * 0.00005; // 万分之5
+      }
+    } else if (stockType === '港股') {
+      // 港股：手续费万2（买入卖出都收），税费千分之1（买入卖出都收）
+      calculatedCommission = totalAmount * 0.0002; // 万2
+      calculatedTax = totalAmount * 0.001; // 千分之1
+    } else if (stockType === '美股') {
+      // 美股：手续费手动输入，税费不需要
+      calculatedCommission = commission || 0;
+      calculatedTax = 0;
+    }
+
+    return {
+      commission: parseFloat(calculatedCommission.toFixed(2)),
+      tax: parseFloat(calculatedTax.toFixed(2))
+    };
+  }
+
   async createTransaction(data) {
     const {
       stock_name,
@@ -117,7 +145,8 @@ class TransactionService {
       quantity,
       price,
       transaction_date,
-      notes
+      notes,
+      commission
     } = data;
 
     // 验证必填字段
@@ -129,8 +158,18 @@ class TransactionService {
       throw new Error('交易类型必须是 BUY 或 SELL');
     }
 
+    // 获取股票信息以确定股票类型
+    const stock = await stockService.getStockByName(stock_name);
+    if (!stock) {
+      throw new Error('股票不存在');
+    }
+
     // 计算总金额
-    const total_amount = (quantity * price).toFixed(2);
+    const total_amount = parseFloat((quantity * price).toFixed(2));
+
+    // 计算手续费和税费
+    const { commission: calculatedCommission, tax: calculatedTax } = 
+      this.calculateCommissionAndTax(stock.stock_type, transaction_type, total_amount, commission);
 
     // 获取当前持仓状态
     const position = await this.getCurrentPosition(stock_name);
@@ -142,14 +181,16 @@ class TransactionService {
       // 买入：如果有空仓，先平空仓；剩余部分开多仓
       if (position.shortPosition > 0) {
         const closeShortQty = Math.min(quantity, position.shortPosition);
-        profit_loss = await this.calculateProfitLossForCloseShort(stock_name, closeShortQty, price);
+        // 传入平仓时间，确保只匹配之前的开仓记录
+        profit_loss = await this.calculateProfitLossForCloseShort(stock_name, closeShortQty, price, null, transaction_date, null);
       }
       // 如果没有空仓或平仓后还有剩余，剩余部分开多仓，不计算盈亏
     } else if (transaction_type === 'SELL') {
       // 卖出：如果有多仓，先平多仓；剩余部分开空仓
       if (position.longPosition > 0) {
         const closeLongQty = Math.min(quantity, position.longPosition);
-        profit_loss = await this.calculateProfitLossForCloseLong(stock_name, closeLongQty, price);
+        // 传入平仓时间，确保只匹配之前的开仓记录
+        profit_loss = await this.calculateProfitLossForCloseLong(stock_name, closeLongQty, price, null, transaction_date, null);
       }
       // 如果没有多仓或平仓后还有剩余，剩余部分开空仓，不计算盈亏
     }
@@ -157,17 +198,17 @@ class TransactionService {
     // 插入交易记录
     const [result] = await db.execute(
       `INSERT INTO transactions 
-       (stock_name, transaction_type, quantity, price, transaction_date, total_amount, profit_loss, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [stock_name, transaction_type, quantity, price, transaction_date, total_amount, profit_loss, notes || null]
+       (stock_name, transaction_type, quantity, price, transaction_date, total_amount, commission, tax, profit_loss, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [stock_name, transaction_type, quantity, price, transaction_date, total_amount, calculatedCommission, calculatedTax, profit_loss, notes || null]
     );
 
     // 返回新创建的记录
     return await this.getTransactionById(result.insertId);
   }
 
-  // 计算平多仓盈亏（FIFO方法：先进先出）
-  async calculateProfitLossForCloseLong(stockName, closeQuantity, closePrice, excludeId = null) {
+  // 计算平多仓盈亏（按时间顺序，最大化盈利匹配）
+  async calculateProfitLossForCloseLong(stockName, closeQuantity, closePrice, excludeId = null, closeTransactionDate = null, closeCreatedAt = null) {
     // 获取所有交易记录（排除当前交易的记录），按时间顺序
     let query = `SELECT * FROM transactions WHERE stock_name = ?`;
     let params = [stockName];
@@ -181,11 +222,27 @@ class TransactionService {
     
     const [transactions] = await db.execute(query, params);
 
-    // 模拟FIFO，找出需要平的多仓对应的买入记录
-    const buyPositions = []; // 当前多仓持仓记录 {id, quantity, price}
+    // 找出需要平的多仓对应的买入记录（只考虑在平仓操作之前的开仓记录）
+    const buyPositions = []; // 当前多仓持仓记录 {id, quantity, price, transaction_date, created_at}
     const sellPositions = []; // 当前空仓持仓记录
 
     for (const trans of transactions) {
+      // 如果提供了平仓时间，只处理在平仓之前的交易
+      if (closeTransactionDate) {
+        const transDate = new Date(trans.transaction_date);
+        const closeDate = new Date(closeTransactionDate);
+        if (transDate.getTime() > closeDate.getTime()) {
+          continue; // 跳过平仓之后的交易
+        }
+        if (transDate.getTime() === closeDate.getTime() && closeCreatedAt) {
+          const transCreated = new Date(trans.created_at);
+          const closeCreated = new Date(closeCreatedAt);
+          if (transCreated.getTime() >= closeCreated.getTime()) {
+            continue; // 如果交易日期相同，跳过创建时间不早于平仓操作的交易
+          }
+        }
+      }
+
       if (trans.transaction_type === 'BUY') {
         let remainingBuyQty = trans.quantity;
         
@@ -203,7 +260,9 @@ class TransactionService {
           buyPositions.push({
             id: trans.id,
             quantity: remainingBuyQty,
-            price: parseFloat(trans.price)
+            price: parseFloat(trans.price),
+            transaction_date: trans.transaction_date,
+            created_at: trans.created_at
           });
         }
       } else if (trans.transaction_type === 'SELL') {
@@ -223,34 +282,53 @@ class TransactionService {
           sellPositions.push({
             id: trans.id,
             quantity: remainingSellQty,
-            price: parseFloat(trans.price)
+            price: parseFloat(trans.price),
+            transaction_date: trans.transaction_date,
+            created_at: trans.created_at
           });
         }
       }
     }
 
-    // 计算平多仓的盈亏（使用最低成本法：选择买入价最低的，最大化收益）
-    // 对买入持仓按价格排序（最低价在前）
+    // 计算平多仓的盈亏（从之前的开仓记录中，选择买入价最低的，最大化收益）
+    // 对买入持仓按价格排序（最低价在前），这样能最大化盈利
     const sortedBuyPositions = [...buyPositions].sort((a, b) => a.price - b.price);
     
     let remainingCloseQty = closeQuantity;
     let totalCost = 0;
+    let totalBuyCommission = 0; // 买入时的手续费（按比例）
 
+    // 获取股票信息以计算卖出时的手续费和税费
+    const stock = await stockService.getStockByName(stockName);
+    const closeAmount = closeQuantity * closePrice;
+    const { commission: sellCommission, tax: sellTax } = 
+      this.calculateCommissionAndTax(stock.stock_type, 'SELL', closeAmount, null);
+
+    // 计算买入成本和买入手续费
     for (const buyPos of sortedBuyPositions) {
       if (remainingCloseQty <= 0) break;
       const usedQty = Math.min(remainingCloseQty, buyPos.quantity);
       totalCost += usedQty * buyPos.price;
+      
+      // 获取买入交易记录以计算手续费（按比例）
+      const buyTrans = transactions.find(t => t.id === buyPos.id);
+      if (buyTrans && buyTrans.commission) {
+        // 按比例计算买入手续费
+        const buyCommissionRatio = usedQty / buyTrans.quantity;
+        totalBuyCommission += parseFloat(buyTrans.commission) * buyCommissionRatio;
+      }
+      
       remainingCloseQty -= usedQty;
     }
 
-    const closeAmount = closeQuantity * closePrice;
-    const profitLoss = closeAmount - totalCost;
+    // 盈亏 = 卖出金额 - 买入成本 - 买入手续费（按比例） - 卖出手续费 - 卖出税费
+    const profitLoss = closeAmount - totalCost - totalBuyCommission - sellCommission - sellTax;
 
     return parseFloat(profitLoss.toFixed(2));
   }
 
-  // 计算平空仓盈亏（FIFO方法：先进先出）
-  async calculateProfitLossForCloseShort(stockName, closeQuantity, closePrice, excludeId = null) {
+  // 计算平空仓盈亏（按时间顺序，最大化盈利匹配）
+  async calculateProfitLossForCloseShort(stockName, closeQuantity, closePrice, excludeId = null, closeTransactionDate = null, closeCreatedAt = null) {
     // 获取所有交易记录（排除当前交易的记录），按时间顺序
     let query = `SELECT * FROM transactions WHERE stock_name = ?`;
     let params = [stockName];
@@ -264,11 +342,27 @@ class TransactionService {
     
     const [transactions] = await db.execute(query, params);
 
-    // 模拟FIFO，找出需要平的空仓对应的卖出记录
+    // 找出需要平的空仓对应的卖出记录（只考虑在平仓操作之前的开仓记录）
     const buyPositions = []; // 当前多仓持仓记录
-    const sellPositions = []; // 当前空仓持仓记录 {id, quantity, price}
+    const sellPositions = []; // 当前空仓持仓记录 {id, quantity, price, transaction_date, created_at}
 
     for (const trans of transactions) {
+      // 如果提供了平仓时间，只处理在平仓之前的交易
+      if (closeTransactionDate) {
+        const transDate = new Date(trans.transaction_date);
+        const closeDate = new Date(closeTransactionDate);
+        if (transDate.getTime() > closeDate.getTime()) {
+          continue; // 跳过平仓之后的交易
+        }
+        if (transDate.getTime() === closeDate.getTime() && closeCreatedAt) {
+          const transCreated = new Date(trans.created_at);
+          const closeCreated = new Date(closeCreatedAt);
+          if (transCreated.getTime() >= closeCreated.getTime()) {
+            continue; // 如果交易日期相同，跳过创建时间不早于平仓操作的交易
+          }
+        }
+      }
+
       if (trans.transaction_type === 'BUY') {
         let remainingBuyQty = trans.quantity;
         
@@ -285,7 +379,9 @@ class TransactionService {
         if (remainingBuyQty > 0) {
           buyPositions.push({
             id: trans.id,
-            quantity: remainingBuyQty
+            quantity: remainingBuyQty,
+            transaction_date: trans.transaction_date,
+            created_at: trans.created_at
           });
         }
       } else if (trans.transaction_type === 'SELL') {
@@ -305,30 +401,53 @@ class TransactionService {
           sellPositions.push({
             id: trans.id,
             quantity: remainingSellQty,
-            price: parseFloat(trans.price)
+            price: parseFloat(trans.price),
+            transaction_date: trans.transaction_date,
+            created_at: trans.created_at
           });
         }
       }
     }
 
-    // 计算平空仓的盈亏（使用最低成本法：选择卖出价最高的，最大化收益）
-    // 对空仓持仓按价格排序（最高价在前）
+    // 计算平空仓的盈亏（从之前的开仓记录中，选择卖出价最高的，最大化收益）
+    // 对空仓持仓按价格排序（最高价在前），这样能最大化盈利
     const sortedSellPositions = [...sellPositions].sort((a, b) => b.price - a.price);
     
     let remainingCloseQty = closeQuantity;
     let totalRevenue = 0; // 开空仓时的收入
+    let totalSellCommission = 0; // 开空仓时的手续费（按比例）
+    let totalSellTax = 0; // 开空仓时的税费（按比例）
 
+    // 获取股票信息以计算买入时的手续费
+    const stock = await stockService.getStockByName(stockName);
+    const closeCost = closeQuantity * closePrice;
+    const { commission: buyCommission } = 
+      this.calculateCommissionAndTax(stock.stock_type, 'BUY', closeCost, null);
+
+    // 计算开空仓收入和手续费、税费
     for (const sellPos of sortedSellPositions) {
       if (remainingCloseQty <= 0) break;
       const usedQty = Math.min(remainingCloseQty, sellPos.quantity);
       totalRevenue += usedQty * sellPos.price;
+      
+      // 获取开空仓（卖出）交易记录以计算手续费和税费（按比例）
+      const sellTrans = transactions.find(t => t.id === sellPos.id);
+      if (sellTrans) {
+        // 按比例计算开空仓手续费和税费
+        const sellRatio = usedQty / sellTrans.quantity;
+        if (sellTrans.commission) {
+          totalSellCommission += parseFloat(sellTrans.commission) * sellRatio;
+        }
+        if (sellTrans.tax) {
+          totalSellTax += parseFloat(sellTrans.tax) * sellRatio;
+        }
+      }
+      
       remainingCloseQty -= usedQty;
     }
 
-    // 平空仓的成本 = 买入价格 * 数量
-    const closeCost = closeQuantity * closePrice;
-    // 平空仓盈亏 = 开空仓收入 - 平空仓成本
-    const profitLoss = totalRevenue - closeCost;
+    // 平空仓盈亏 = 开空仓收入 - 平空仓成本 - 开空仓手续费（按比例） - 开空仓税费（按比例） - 买入手续费
+    const profitLoss = totalRevenue - closeCost - totalSellCommission - totalSellTax - buyCommission;
 
     return parseFloat(profitLoss.toFixed(2));
   }
@@ -346,7 +465,8 @@ class TransactionService {
       quantity,
       price,
       transaction_date,
-      notes
+      notes,
+      commission
     } = data;
 
     // 重新计算盈亏（需要考虑所有相关交易）
@@ -356,22 +476,35 @@ class TransactionService {
     const finalPrice = price || existing.price;
     const finalType = transaction_type || existing.transaction_type;
 
+    // 获取股票信息以确定股票类型
+    const stock = await stockService.getStockByName(finalStockName);
+    if (!stock) {
+      throw new Error('股票不存在');
+    }
+
     // 获取当前持仓状态（排除当前记录）
     const position = await this.getCurrentPositionExcluding(finalStockName, existing.id);
+
+    const finalTransactionDate = transaction_date || existing.transaction_date;
+    const finalCreatedAt = existing.created_at;
 
     if (finalType === 'BUY') {
       if (position.shortPosition > 0) {
         const closeShortQty = Math.min(finalQuantity, position.shortPosition);
-        profit_loss = await this.calculateProfitLossForCloseShort(finalStockName, closeShortQty, finalPrice, existing.id);
+        profit_loss = await this.calculateProfitLossForCloseShort(finalStockName, closeShortQty, finalPrice, existing.id, finalTransactionDate, finalCreatedAt);
       }
     } else if (finalType === 'SELL') {
       if (position.longPosition > 0) {
         const closeLongQty = Math.min(finalQuantity, position.longPosition);
-        profit_loss = await this.calculateProfitLossForCloseLong(finalStockName, closeLongQty, finalPrice, existing.id);
+        profit_loss = await this.calculateProfitLossForCloseLong(finalStockName, closeLongQty, finalPrice, existing.id, finalTransactionDate, finalCreatedAt);
       }
     }
 
-    const total_amount = ((quantity || existing.quantity) * (price || existing.price)).toFixed(2);
+    const total_amount = parseFloat(((quantity || existing.quantity) * (price || existing.price)).toFixed(2));
+
+    // 计算手续费和税费
+    const { commission: calculatedCommission, tax: calculatedTax } = 
+      this.calculateCommissionAndTax(stock.stock_type, finalType, total_amount, commission);
 
     await db.execute(
       `UPDATE transactions SET
@@ -381,6 +514,8 @@ class TransactionService {
        price = ?,
        transaction_date = ?,
        total_amount = ?,
+       commission = ?,
+       tax = ?,
        profit_loss = ?,
        notes = ?
        WHERE id = ?`,
@@ -391,6 +526,8 @@ class TransactionService {
         price || existing.price,
         transaction_date || existing.transaction_date,
         total_amount,
+        calculatedCommission,
+        calculatedTax,
         profit_loss,
         notes !== undefined ? notes : existing.notes,
         id
