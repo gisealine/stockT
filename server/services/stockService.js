@@ -210,6 +210,7 @@ class StockService {
             date: trans.transaction_date,
             totalAmount: remainingBuyQty * parseFloat(trans.price),
             commission: trans.commission || 0, // 保存完整的买入手续费，在完全平仓时才扣除
+            tax: trans.tax || 0, // 保存完整的买入税费，在完全平仓时才扣除
             originalQuantity: trans.quantity // 保存原始数量，用于判断是否完全平仓
           };
           
@@ -324,13 +325,35 @@ class StockService {
 
   // 计算已平仓的盈亏和开平仓明细（使用最低成本法最大化收益）
   calculateClosedProfitLossAndDetails(transactions, stockType = 'A股') {
-    const buyPositions = []; // 可用买入持仓 {id, quantity, price, date, commission}
+    const buyPositions = []; // 可用买入持仓 {id, quantity, price, date, commission, tax}
     const sellPositions = []; // 可用卖出持仓（空仓） {id, quantity, price, date, commission, tax}
     const closedPositions = []; // 已平仓明细
 
     for (const trans of transactions) {
       if (trans.transaction_type === 'BUY') {
         let remainingBuyQty = trans.quantity;
+        const originalBuyQty = trans.quantity;
+        
+        // 先判断这笔买入交易是否全部用于平空仓（没有开新多仓）
+        let tempRemainingBuyQty = trans.quantity;
+        for (const pos of sellPositions) {
+          if (tempRemainingBuyQty <= 0) break;
+          tempRemainingBuyQty -= Math.min(tempRemainingBuyQty, pos.quantity);
+        }
+        const isFullyClosingShort = (tempRemainingBuyQty === 0); // 这笔买入交易是否全部用于平空仓
+        
+        // 如果全部用于平空仓，计算整笔买入交易的手续费
+        let totalBuyCommission = 0;
+        if (isFullyClosingShort) {
+          const totalBuyAmount = parseFloat(trans.price) * originalBuyQty;
+          if (stockType === 'A股') {
+            totalBuyCommission = totalBuyAmount * 0.00015;
+          } else if (stockType === '港股') {
+            totalBuyCommission = totalBuyAmount * 0.0002;
+          } else if (stockType === '美股') {
+            totalBuyCommission = trans.commission || 0;
+          }
+        }
         
         // 先平空仓（优先选择卖出价最高的，最大化收益）
         while (remainingBuyQty > 0 && sellPositions.length > 0) {
@@ -348,6 +371,7 @@ class StockService {
           
           const shortPos = sellPositions[maxPriceIndex];
           const usedQty = Math.min(remainingBuyQty, shortPos.quantity);
+          const isLastClosing = (remainingBuyQty - usedQty === 0); // 是否是最后一次平空仓
           
           // 计算平空仓盈亏（包含手续费和税费）
           const revenue = shortPos.price * usedQty; // 开空仓收入
@@ -363,19 +387,39 @@ class StockService {
           }
           // 如果只是部分平仓，不扣除开空仓手续费和税费
           
-          // 计算买入手续费
-          const buyAmount = cost;
-          let buyCommission = 0;
-          if (stockType === 'A股') {
-            buyCommission = buyAmount * 0.00015;
-          } else if (stockType === '港股') {
-            buyCommission = buyAmount * 0.0002;
-          } else if (stockType === '美股') {
-            buyCommission = (trans.commission || 0) * (usedQty / trans.quantity);
+          // 计算买入手续费和税费
+          // 如果全部用于平空仓，计算整笔买入交易的手续费和税费
+          let totalBuyTax = 0;
+          if (isFullyClosingShort) {
+            const totalBuyAmount = parseFloat(trans.price) * originalBuyQty;
+            if (stockType === '港股') {
+              totalBuyTax = totalBuyAmount * 0.001; // 港股买入也收税费
+            } else {
+              totalBuyTax = 0; // A股和美股买入不收税费
+            }
           }
           
-          // 平空仓盈亏 = 开空仓收入 - 平空仓成本 - 开空仓手续费（完全平仓时才扣除） - 开空仓税费（完全平仓时才扣除） - 买入手续费
-          const profitLoss = revenue - cost - shortCommission - shortTax - buyCommission;
+          let buyCommission = 0;
+          let buyTax = 0;
+          if (isFullyClosingShort) {
+            // 全部用于平空仓，只在最后一次平空仓时计算整笔买入交易的手续费和税费
+            if (isLastClosing) {
+              // 最后一次平空仓，计算整笔买入交易的手续费和税费
+              buyCommission = totalBuyCommission;
+              buyTax = totalBuyTax;
+            } else {
+              // 不是最后一次，不计算买入手续费和税费（因为买入交易还没完全平仓）
+              buyCommission = 0;
+              buyTax = 0;
+            }
+          } else {
+            // 部分用于平空仓、部分开多仓，不计算买入交易的手续费和税费
+            buyCommission = 0;
+            buyTax = 0;
+          }
+          
+          // 平空仓盈亏 = 开空仓收入 - 平空仓成本 - 开空仓手续费（完全平仓时才扣除） - 开空仓税费（完全平仓时才扣除） - 买入手续费 - 买入税费
+          const profitLoss = revenue - cost - shortCommission - shortTax - buyCommission - buyTax;
           
           closedPositions.push({
             openDate: shortPos.date,
@@ -402,6 +446,7 @@ class StockService {
             price: parseFloat(trans.price),
             date: trans.transaction_date,
             commission: trans.commission || 0, // 保存完整的买入手续费，在完全平仓时才扣除
+            tax: trans.tax || 0, // 保存完整的买入税费，在完全平仓时才扣除
             originalQuantity: trans.quantity // 保存原始数量
           };
           
@@ -420,6 +465,33 @@ class StockService {
         }
       } else if (trans.transaction_type === 'SELL') {
         let remainingSellQty = trans.quantity;
+        const originalSellQty = trans.quantity;
+        
+        // 先判断这笔卖出交易是否全部用于平仓（没有开新仓）
+        // 通过模拟计算 remainingSellQty 最终是否为0
+        let tempRemainingSellQty = trans.quantity;
+        for (const pos of buyPositions) {
+          if (tempRemainingSellQty <= 0) break;
+          tempRemainingSellQty -= Math.min(tempRemainingSellQty, pos.quantity);
+        }
+        const isFullyClosing = (tempRemainingSellQty === 0); // 这笔卖出交易是否全部用于平仓
+        
+        // 如果全部用于平仓，计算整笔交易的手续费和税费
+        let totalSellCommission = 0;
+        let totalSellTax = 0;
+        if (isFullyClosing) {
+          const totalSellAmount = parseFloat(trans.price) * originalSellQty;
+          if (stockType === 'A股') {
+            totalSellCommission = totalSellAmount * 0.00015;
+            totalSellTax = totalSellAmount * 0.00005;
+          } else if (stockType === '港股') {
+            totalSellCommission = totalSellAmount * 0.0002;
+            totalSellTax = totalSellAmount * 0.001;
+          } else if (stockType === '美股') {
+            totalSellCommission = trans.commission || 0;
+            totalSellTax = 0;
+          }
+        }
         
         // 先平多仓（优先选择买入价最低的，最大化收益）
         while (remainingSellQty > 0 && buyPositions.length > 0) {
@@ -431,37 +503,47 @@ class StockService {
           
           const longPos = buyPositions[0];
           const usedQty = Math.min(remainingSellQty, longPos.quantity);
+          const isLastClosing = (remainingSellQty - usedQty === 0); // 是否是最后一次平仓
           
           // 计算平多仓盈亏（包含手续费和税费）
           const sellAmount = parseFloat(trans.price) * usedQty; // 卖出金额
           const buyCost = longPos.price * usedQty; // 买入成本
           
-          // 原则：买入手续费只有在买入记录被完全平仓时才一次性扣除
+          // 原则：买入手续费和税费只有在买入记录被完全平仓时才一次性扣除
           // 判断是否完全平仓：usedQty 等于 longPos.quantity（当前持仓数量）
           // 注意：longPos.quantity 可能小于原始买入数量（如果之前已经部分平仓）
           let buyCommission = 0;
+          let buyTax = 0;
           if (usedQty === longPos.quantity) {
-            // 完全平仓，扣除全部买入手续费
+            // 完全平仓，扣除全部买入手续费和税费
             buyCommission = longPos.commission || 0;
+            buyTax = longPos.tax || 0;
           }
-          // 如果只是部分平仓，不扣除买入手续费
+          // 如果只是部分平仓，不扣除买入手续费和税费
           
           // 计算卖出手续费和税费
           let sellCommission = 0;
           let sellTax = 0;
-          if (stockType === 'A股') {
-            sellCommission = sellAmount * 0.00015;
-            sellTax = sellAmount * 0.00005; // 只有卖出才收税费
-          } else if (stockType === '港股') {
-            sellCommission = sellAmount * 0.0002;
-            sellTax = sellAmount * 0.001;
-          } else if (stockType === '美股') {
-            sellCommission = (trans.commission || 0) * (usedQty / trans.quantity);
+          if (isFullyClosing) {
+            // 全部用于平仓，只在最后一次平仓时计算整笔交易的手续费和税费
+            if (isLastClosing) {
+              // 最后一次平仓，计算整笔交易的手续费和税费
+              sellCommission = totalSellCommission;
+              sellTax = totalSellTax;
+            } else {
+              // 不是最后一次，不计算卖出手续费和税费（因为这笔卖出交易还没完全平仓）
+              sellCommission = 0;
+              sellTax = 0;
+            }
+          } else {
+            // 部分用于平仓、部分开新仓，不计算卖出交易的手续费和税费
+            // 因为这笔卖出交易还没完全平仓，开新仓的部分会在将来平仓时计算
+            sellCommission = 0;
             sellTax = 0;
           }
           
-          // 平多仓盈亏 = 卖出金额 - 买入成本 - 买入手续费（完全平仓时才扣除） - 卖出手续费 - 卖出税费
-          const profitLoss = sellAmount - buyCost - buyCommission - sellCommission - sellTax;
+          // 平多仓盈亏 = 卖出金额 - 买入成本 - 买入手续费（完全平仓时才扣除） - 买入税费（完全平仓时才扣除） - 卖出手续费 - 卖出税费
+          const profitLoss = sellAmount - buyCost - buyCommission - buyTax - sellCommission - sellTax;
           
           closedPositions.push({
             openDate: longPos.date,
