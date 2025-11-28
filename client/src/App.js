@@ -4,6 +4,7 @@ import Statistics from './components/Statistics';
 import StockManagement from './components/StockManagement';
 import StockDetail from './components/StockDetail';
 import { transactionsAPI, stocksAPI } from './services/api';
+import { getCurrencySymbol } from './utils/currency';
 import './App.css';
 
 // 页面类型
@@ -160,6 +161,7 @@ function App() {
                           if (!amount) return '0.00';
                           return parseFloat(amount).toFixed(2);
                         };
+                        const currencySymbol = getCurrencySymbol(stock.stock_type);
                         return (
                           <tr key={stock.id}>
                             <td><strong>{stock.name}</strong></td>
@@ -168,12 +170,12 @@ function App() {
                                 {stock.stock_type || 'A股'}
                               </span>
                             </td>
-                            <td>¥{formatCurrency(stat.total_buy_amount)}</td>
-                            <td>¥{formatCurrency(stat.total_sell_amount)}</td>
+                            <td>{currencySymbol}{formatCurrency(stat.total_buy_amount)}</td>
+                            <td>{currencySymbol}{formatCurrency(stat.total_sell_amount)}</td>
                             <td>
                               <span className={stat.total_profit_loss >= 0 ? 'profit' : 'loss'}>
                                 {stat.total_profit_loss >= 0 ? '+' : ''}
-                                ¥{formatCurrency(stat.total_profit_loss)}
+                                {currencySymbol}{formatCurrency(stat.total_profit_loss)}
                               </span>
                             </td>
                             <td>

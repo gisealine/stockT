@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { stocksAPI, transactionsAPI } from '../services/api';
 import { format } from 'date-fns';
+import { getCurrencySymbol, formatCurrency as formatCurrencyUtil } from '../utils/currency';
 
 const StockDetail = ({ stockName, onBack }) => {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [stockType, setStockType] = useState(null);
 
   useEffect(() => {
     loadDetail();
@@ -17,7 +19,15 @@ const StockDetail = ({ stockName, onBack }) => {
       setLoading(true);
       setError(null);
       const response = await stocksAPI.getDetail(stockName);
-      setDetail(response.data.data);
+      const detailData = response.data.data;
+      setDetail(detailData);
+      
+      // 获取股票类型
+      const stocksResponse = await stocksAPI.getAll();
+      const stock = stocksResponse.data.data.find(s => s.name === stockName);
+      if (stock) {
+        setStockType(stock.stock_type);
+      }
     } catch (err) {
       setError(err.response?.data?.message || '加载股票详情失败');
       console.error('加载股票详情失败:', err);
@@ -30,6 +40,8 @@ const StockDetail = ({ stockName, onBack }) => {
     if (!amount) return '0.00';
     return parseFloat(amount).toFixed(2);
   };
+  
+  const currencySymbol = getCurrencySymbol(stockType);
 
   const formatDate = (dateString) => {
     try {
@@ -104,7 +116,7 @@ const StockDetail = ({ stockName, onBack }) => {
           <div style={{ fontSize: '24px', fontWeight: 'bold', marginTop: '10px' }}>
             <span className={detail.closedProfitLoss >= 0 ? 'profit' : 'loss'}>
               {detail.closedProfitLoss >= 0 ? '+' : ''}
-              ¥{formatCurrency(detail.closedProfitLoss)}
+              {currencySymbol}{formatCurrency(detail.closedProfitLoss)}
             </span>
           </div>
         </div>
@@ -137,8 +149,8 @@ const StockDetail = ({ stockName, onBack }) => {
                           </span>
                         </td>
                         <td>{quantity}</td>
-                        <td>¥{formatCurrency(position.price)}</td>
-                        <td>¥{formatCurrency(position.totalAmount)}</td>
+                        <td>{currencySymbol}{formatCurrency(position.price)}</td>
+                        <td>{currencySymbol}{formatCurrency(position.totalAmount)}</td>
                       </tr>
                     );
                   })}
@@ -179,13 +191,13 @@ const StockDetail = ({ stockName, onBack }) => {
                       </td>
                       <td>{formatDate(closed.openDate)}</td>
                       <td>{formatDate(closed.closeDate)}</td>
-                      <td>¥{formatCurrency(closed.openPrice)}</td>
-                      <td>¥{formatCurrency(closed.closePrice)}</td>
+                      <td>{currencySymbol}{formatCurrency(closed.openPrice)}</td>
+                      <td>{currencySymbol}{formatCurrency(closed.closePrice)}</td>
                       <td>{closed.quantity}</td>
                       <td>
                         <span className={closed.profitLoss >= 0 ? 'profit' : 'loss'}>
                           {closed.profitLoss >= 0 ? '+' : ''}
-                          ¥{formatCurrency(closed.profitLoss)}
+                          {currencySymbol}{formatCurrency(closed.profitLoss)}
                         </span>
                       </td>
                     </tr>
@@ -228,10 +240,10 @@ const StockDetail = ({ stockName, onBack }) => {
                         </span>
                       </td>
                       <td>{transaction.quantity}</td>
-                      <td>¥{formatCurrency(transaction.price)}</td>
-                      <td>¥{formatCurrency(transaction.total_amount)}</td>
-                      <td>¥{formatCurrency(transaction.commission)}</td>
-                      <td>¥{formatCurrency(transaction.tax)}</td>
+                      <td>{currencySymbol}{formatCurrency(transaction.price)}</td>
+                      <td>{currencySymbol}{formatCurrency(transaction.total_amount)}</td>
+                      <td>{currencySymbol}{formatCurrency(transaction.commission)}</td>
+                      <td>{currencySymbol}{formatCurrency(transaction.tax)}</td>
                       <td>
                         <button
                           className="button button-danger"

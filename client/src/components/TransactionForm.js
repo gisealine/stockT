@@ -4,6 +4,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { registerLocale } from 'react-datepicker';
 import zhCN from 'date-fns/locale/zh-CN';
 import { stocksAPI } from '../services/api';
+import { getCurrencySymbol } from '../utils/currency';
 
 registerLocale('zhCN', zhCN);
 
@@ -340,7 +341,7 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
                 <div className="form-group">
                   <label>手续费（元）</label>
                   <div style={{ padding: '10px', backgroundColor: '#f0f0f0', borderRadius: '4px', fontSize: '16px' }}>
-                    ¥{calculateCommissionAndTax().commission.toFixed(2)}
+                    {getCurrencySymbol(selectedStock.stock_type)}{calculateCommissionAndTax().commission.toFixed(2)}
                     <span style={{ fontSize: '12px', color: '#666', marginLeft: '5px' }}>
                       ({selectedStock.stock_type === 'A股' ? '万1.5' : '万2'})
                     </span>
@@ -351,7 +352,7 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
                   <div style={{ padding: '10px', backgroundColor: '#f0f0f0', borderRadius: '4px', fontSize: '16px' }}>
                     {calculateCommissionAndTax().tax > 0 ? (
                       <>
-                        ¥{calculateCommissionAndTax().tax.toFixed(2)}
+                        {getCurrencySymbol(selectedStock.stock_type)}{calculateCommissionAndTax().tax.toFixed(2)}
                         <span style={{ fontSize: '12px', color: '#666', marginLeft: '5px' }}>
                           ({selectedStock.stock_type === 'A股' ? '万分之5（仅卖出）' : '千分之1'})
                         </span>
@@ -382,7 +383,7 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
           <div style={{ marginBottom: '15px', padding: '10px', backgroundColor: '#f0f0f0', borderRadius: '5px' }}>
             <strong>交易总金额：</strong>
             <span style={{ color: '#667eea', fontSize: '18px', fontWeight: 'bold' }}>
-              ¥{(parseFloat(formData.quantity || 0) * parseFloat(formData.price || 0)).toFixed(2)}
+              {selectedStock ? getCurrencySymbol(selectedStock.stock_type) : '¥'}{(parseFloat(formData.quantity || 0) * parseFloat(formData.price || 0)).toFixed(2)}
             </span>
           </div>
         )}

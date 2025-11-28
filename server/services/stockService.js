@@ -209,6 +209,8 @@ class StockService {
             price: parseFloat(trans.price),
             date: trans.transaction_date,
             totalAmount: remainingBuyQty * parseFloat(trans.price),
+            commission: trans.commission || 0, // 保存完整的买入手续费，在完全平仓时才扣除
+            originalQuantity: trans.quantity // 保存原始数量，用于判断是否完全平仓
           };
           
           // 插入到合适位置（按价格从低到高排序）
@@ -255,6 +257,9 @@ class StockService {
             price: parseFloat(trans.price),
             date: trans.transaction_date,
             totalAmount: remainingSellQty * parseFloat(trans.price),
+            commission: trans.commission || 0, // 保存完整的开空仓手续费，在完全平仓时才扣除
+            tax: trans.tax || 0, // 保存完整的开空仓税费，在完全平仓时才扣除
+            originalQuantity: trans.quantity // 保存原始数量
           };
           
           // 插入到合适位置（按价格从高到低排序）
@@ -348,10 +353,15 @@ class StockService {
           const revenue = shortPos.price * usedQty; // 开空仓收入
           const cost = parseFloat(trans.price) * usedQty; // 平空仓成本
           
-          // 按比例计算开空仓手续费和税费
-          const sellRatio = usedQty / shortPos.quantity;
-          const shortCommission = (shortPos.commission || 0) * sellRatio;
-          const shortTax = (shortPos.tax || 0) * sellRatio;
+          // 原则：开空仓的手续费和税费只有在开空仓记录被完全平仓时才一次性扣除
+          let shortCommission = 0;
+          let shortTax = 0;
+          if (usedQty === shortPos.quantity) {
+            // 完全平仓，扣除全部开空仓手续费和税费
+            shortCommission = shortPos.commission || 0;
+            shortTax = shortPos.tax || 0;
+          }
+          // 如果只是部分平仓，不扣除开空仓手续费和税费
           
           // 计算买入手续费
           const buyAmount = cost;
@@ -364,7 +374,7 @@ class StockService {
             buyCommission = (trans.commission || 0) * (usedQty / trans.quantity);
           }
           
-          // 平空仓盈亏 = 开空仓收入 - 平空仓成本 - 开空仓手续费（按比例） - 开空仓税费（按比例） - 买入手续费
+          // 平空仓盈亏 = 开空仓收入 - 平空仓成本 - 开空仓手续费（完全平仓时才扣除） - 开空仓税费（完全平仓时才扣除） - 买入手续费
           const profitLoss = revenue - cost - shortCommission - shortTax - buyCommission;
           
           closedPositions.push({
@@ -391,7 +401,8 @@ class StockService {
             quantity: remainingBuyQty,
             price: parseFloat(trans.price),
             date: trans.transaction_date,
-            commission: (trans.commission || 0) * (remainingBuyQty / trans.quantity)
+            commission: trans.commission || 0, // 保存完整的买入手续费，在完全平仓时才扣除
+            originalQuantity: trans.quantity // 保存原始数量
           };
           
           // 插入到合适位置（按价格从低到高排序）
@@ -425,9 +436,15 @@ class StockService {
           const sellAmount = parseFloat(trans.price) * usedQty; // 卖出金额
           const buyCost = longPos.price * usedQty; // 买入成本
           
-          // 按比例计算买入手续费
-          const buyRatio = usedQty / longPos.quantity;
-          const buyCommission = (longPos.commission || 0) * buyRatio;
+          // 原则：买入手续费只有在买入记录被完全平仓时才一次性扣除
+          // 判断是否完全平仓：usedQty 等于 longPos.quantity（当前持仓数量）
+          // 注意：longPos.quantity 可能小于原始买入数量（如果之前已经部分平仓）
+          let buyCommission = 0;
+          if (usedQty === longPos.quantity) {
+            // 完全平仓，扣除全部买入手续费
+            buyCommission = longPos.commission || 0;
+          }
+          // 如果只是部分平仓，不扣除买入手续费
           
           // 计算卖出手续费和税费
           let sellCommission = 0;
@@ -443,7 +460,7 @@ class StockService {
             sellTax = 0;
           }
           
-          // 平多仓盈亏 = 卖出金额 - 买入成本 - 买入手续费（按比例） - 卖出手续费 - 卖出税费
+          // 平多仓盈亏 = 卖出金额 - 买入成本 - 买入手续费（完全平仓时才扣除） - 卖出手续费 - 卖出税费
           const profitLoss = sellAmount - buyCost - buyCommission - sellCommission - sellTax;
           
           closedPositions.push({
@@ -470,8 +487,9 @@ class StockService {
             quantity: remainingSellQty,
             price: parseFloat(trans.price),
             date: trans.transaction_date,
-            commission: (trans.commission || 0) * (remainingSellQty / trans.quantity),
-            tax: (trans.tax || 0) * (remainingSellQty / trans.quantity)
+            commission: trans.commission || 0, // 保存完整的开空仓手续费，在完全平仓时才扣除
+            tax: trans.tax || 0, // 保存完整的开空仓税费，在完全平仓时才扣除
+            originalQuantity: trans.quantity // 保存原始数量
           };
           
           // 插入到合适位置（按价格从高到低排序）
