@@ -106,18 +106,8 @@ function App() {
       default:
         return (
           <>
-            {/* 交易表单 - 直接显示 */}
-            <div className="card" style={{ marginBottom: '30px' }}>
-              <h2>{editingTransaction ? '编辑交易记录' : '添加交易记录'}</h2>
-              <TransactionForm
-                transaction={editingTransaction}
-                onSave={handleSave}
-                onCancel={handleCancel}
-              />
-            </div>
-
             {/* 股票列表 */}
-            <div className="card">
+            <div className="card" style={{ marginBottom: '30px' }}>
               <h2>股票列表</h2>
               {loading ? (
                 <div className="loading">加载中...</div>
@@ -176,6 +166,16 @@ function App() {
                   </table>
                 </div>
               )}
+            </div>
+
+            {/* 交易表单 - 直接显示 */}
+            <div className="card">
+              <h2>{editingTransaction ? '编辑交易记录' : '添加交易记录'}</h2>
+              <TransactionForm
+                transaction={editingTransaction}
+                onSave={handleSave}
+                onCancel={handleCancel}
+              />
             </div>
           </>
         );
