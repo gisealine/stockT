@@ -1,5 +1,6 @@
 const db = require('../config/database');
 const stockService = require('./stockService');
+const { calculateCommissionAndTax: calcCommissionAndTax } = require('../utils/commissionCalculator');
 
 class TransactionService {
   // 获取所有交易记录，按日期倒序
@@ -110,32 +111,9 @@ class TransactionService {
     return this.calculatePosition(transactions);
   }
 
-  // 创建交易记录并计算盈亏
-  // 计算手续费和税费
+  // 计算手续费和税费（使用共享工具函数）
   calculateCommissionAndTax(stockType, transactionType, totalAmount, commission = null) {
-    let calculatedCommission = 0;
-    let calculatedTax = 0;
-
-    if (stockType === 'A股') {
-      // A股：手续费万1.5（买入卖出都收），税费万分之5（只有卖出收）
-      calculatedCommission = totalAmount * 0.00015; // 万1.5
-      if (transactionType === 'SELL') {
-        calculatedTax = totalAmount * 0.00005; // 万分之5
-      }
-    } else if (stockType === '港股') {
-      // 港股：手续费万2（买入卖出都收），税费千分之1（买入卖出都收）
-      calculatedCommission = totalAmount * 0.0002; // 万2
-      calculatedTax = totalAmount * 0.001; // 千分之1
-    } else if (stockType === '美股') {
-      // 美股：手续费手动输入，税费不需要
-      calculatedCommission = commission || 0;
-      calculatedTax = 0;
-    }
-
-    return {
-      commission: parseFloat(calculatedCommission.toFixed(2)),
-      tax: parseFloat(calculatedTax.toFixed(2))
-    };
+    return calcCommissionAndTax(stockType, transactionType, totalAmount, commission);
   }
 
   async createTransaction(data) {

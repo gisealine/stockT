@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { calculateCommissionAndTax } = require('../utils/commissionCalculator');
 
 // 股票类型映射：数字 -> 中文
 const STOCK_TYPE_MAP = {
@@ -342,17 +343,14 @@ class StockService {
         }
         const isFullyClosingShort = (tempRemainingBuyQty === 0); // 这笔买入交易是否全部用于平空仓
         
-        // 如果全部用于平空仓，计算整笔买入交易的手续费
+        // 如果全部用于平空仓，计算整笔买入交易的手续费和税费
         let totalBuyCommission = 0;
+        let totalBuyTax = 0;
         if (isFullyClosingShort) {
           const totalBuyAmount = parseFloat(trans.price) * originalBuyQty;
-          if (stockType === 'A股') {
-            totalBuyCommission = totalBuyAmount * 0.00015;
-          } else if (stockType === '港股') {
-            totalBuyCommission = totalBuyAmount * 0.0002;
-          } else if (stockType === '美股') {
-            totalBuyCommission = trans.commission || 0;
-          }
+          const { commission, tax } = calculateCommissionAndTax(stockType, 'BUY', totalBuyAmount, trans.commission);
+          totalBuyCommission = commission;
+          totalBuyTax = tax;
         }
         
         // 先平空仓（优先选择卖出价最高的，最大化收益）
@@ -388,35 +386,15 @@ class StockService {
           // 如果只是部分平仓，不扣除开空仓手续费和税费
           
           // 计算买入手续费和税费
-          // 如果全部用于平空仓，计算整笔买入交易的手续费和税费
-          let totalBuyTax = 0;
-          if (isFullyClosingShort) {
-            const totalBuyAmount = parseFloat(trans.price) * originalBuyQty;
-            if (stockType === '港股') {
-              totalBuyTax = totalBuyAmount * 0.001; // 港股买入也收税费
-            } else {
-              totalBuyTax = 0; // A股和美股买入不收税费
-            }
-          }
-          
+          // 全部用于平空仓时，只在最后一次平空仓时计算整笔买入交易的手续费和税费
           let buyCommission = 0;
           let buyTax = 0;
-          if (isFullyClosingShort) {
-            // 全部用于平空仓，只在最后一次平空仓时计算整笔买入交易的手续费和税费
-            if (isLastClosing) {
-              // 最后一次平空仓，计算整笔买入交易的手续费和税费
-              buyCommission = totalBuyCommission;
-              buyTax = totalBuyTax;
-            } else {
-              // 不是最后一次，不计算买入手续费和税费（因为买入交易还没完全平仓）
-              buyCommission = 0;
-              buyTax = 0;
-            }
-          } else {
-            // 部分用于平空仓、部分开多仓，不计算买入交易的手续费和税费
-            buyCommission = 0;
-            buyTax = 0;
+          if (isFullyClosingShort && isLastClosing) {
+            // 最后一次平空仓，计算整笔买入交易的手续费和税费
+            buyCommission = totalBuyCommission;
+            buyTax = totalBuyTax;
           }
+          // 如果不是最后一次，或部分用于平仓、部分开新仓，不计算买入交易的手续费和税费
           
           // 平空仓盈亏 = 开空仓收入 - 平空仓成本 - 开空仓手续费（完全平仓时才扣除） - 开空仓税费（完全平仓时才扣除） - 买入手续费 - 买入税费
           const profitLoss = revenue - cost - shortCommission - shortTax - buyCommission - buyTax;
@@ -481,16 +459,9 @@ class StockService {
         let totalSellTax = 0;
         if (isFullyClosing) {
           const totalSellAmount = parseFloat(trans.price) * originalSellQty;
-          if (stockType === 'A股') {
-            totalSellCommission = totalSellAmount * 0.00015;
-            totalSellTax = totalSellAmount * 0.00005;
-          } else if (stockType === '港股') {
-            totalSellCommission = totalSellAmount * 0.0002;
-            totalSellTax = totalSellAmount * 0.001;
-          } else if (stockType === '美股') {
-            totalSellCommission = trans.commission || 0;
-            totalSellTax = 0;
-          }
+          const { commission, tax } = calculateCommissionAndTax(stockType, 'SELL', totalSellAmount, trans.commission);
+          totalSellCommission = commission;
+          totalSellTax = tax;
         }
         
         // 先平多仓（优先选择买入价最低的，最大化收益）
