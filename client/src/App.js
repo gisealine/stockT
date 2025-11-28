@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import TransactionForm from './components/TransactionForm';
-import Statistics from './components/Statistics';
 import StockManagement from './components/StockManagement';
 import StockDetail from './components/StockDetail';
 import { transactionsAPI, stocksAPI } from './services/api';
@@ -17,22 +16,11 @@ const PAGE_TYPES = {
 function App() {
   const [currentPage, setCurrentPage] = useState(PAGE_TYPES.TRANSACTIONS);
   const [selectedStockName, setSelectedStockName] = useState(null);
-  const [stats, setStats] = useState(null);
   const [error, setError] = useState(null);
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [stocks, setStocks] = useState([]);
   const [stockStats, setStockStats] = useState({});
   const [loading, setLoading] = useState(false);
-
-  // 加载统计数据
-  const loadStats = async () => {
-    try {
-      const response = await transactionsAPI.getStats();
-      setStats(response.data.data || null);
-    } catch (err) {
-      console.error('加载统计数据失败:', err);
-    }
-  };
 
   // 加载股票列表和统计
   const loadStocksAndStats = async () => {
@@ -44,7 +32,6 @@ function App() {
         transactionsAPI.getStats(),
       ]);
       setStocks(stocksResponse.data.data || []);
-      setStats(statsResponse.data.data || null);
       
       // 将统计按股票名称索引
       const statsByStock = {};
@@ -64,7 +51,6 @@ function App() {
 
   useEffect(() => {
     if (currentPage === PAGE_TYPES.TRANSACTIONS) {
-      loadStats();
       loadStocksAndStats();
     }
   }, [currentPage]);
@@ -80,8 +66,7 @@ function App() {
       }
       // 清除编辑状态
       setEditingTransaction(null);
-      // 重新加载统计和股票列表
-      await loadStats();
+      // 重新加载股票列表和统计
       await loadStocksAndStats();
     } catch (err) {
       setError(err.response?.data?.message || '保存交易记录失败');
@@ -121,9 +106,6 @@ function App() {
       default:
         return (
           <>
-            {/* 总体统计 */}
-            <Statistics stats={stats} />
-
             {/* 交易表单 - 直接显示 */}
             <div className="card" style={{ marginBottom: '30px' }}>
               <h2>{editingTransaction ? '编辑交易记录' : '添加交易记录'}</h2>
