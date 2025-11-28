@@ -402,6 +402,7 @@ class StockService {
           closedPositions.push({
             openDate: shortPos.date,
             closeDate: trans.transaction_date,
+            closeCreatedAt: trans.created_at, // 平仓交易的创建时间
             openPrice: shortPos.price,
             closePrice: parseFloat(trans.price),
             quantity: usedQty,
@@ -519,6 +520,7 @@ class StockService {
           closedPositions.push({
             openDate: longPos.date,
             closeDate: trans.transaction_date,
+            closeCreatedAt: trans.created_at, // 平仓交易的创建时间
             openPrice: longPos.price,
             closePrice: parseFloat(trans.price),
             quantity: usedQty,
@@ -566,11 +568,16 @@ class StockService {
     return {
       totalProfitLoss: parseFloat(totalProfitLoss.toFixed(2)),
       closedPositions: closedPositions.sort((a, b) => {
-        // 按平仓日期排序
+        // 按平仓日期倒序，如果日期相同则按创建时间倒序
         const dateA = new Date(a.closeDate);
         const dateB = new Date(b.closeDate);
-        if (dateA !== dateB) return dateB - dateA; // 最新的在前
-        return 0;
+        if (dateA.getTime() !== dateB.getTime()) {
+          return dateB - dateA; // 最新的在前
+        }
+        // 日期相同，按创建时间倒序
+        const createdA = new Date(a.closeCreatedAt || 0);
+        const createdB = new Date(b.closeCreatedAt || 0);
+        return createdB.getTime() - createdA.getTime();
       })
     };
   }

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { stocksAPI, transactionsAPI } from '../services/api';
 import { format } from 'date-fns';
-import { getCurrencySymbol, formatCurrency as formatCurrencyUtil } from '../utils/currency';
+import { getCurrencySymbol } from '../utils/currency';
 
 const StockDetail = ({ stockName, onBack }) => {
   const [detail, setDetail] = useState(null);
@@ -10,11 +10,7 @@ const StockDetail = ({ stockName, onBack }) => {
   const [deletingId, setDeletingId] = useState(null);
   const [stockType, setStockType] = useState(null);
 
-  useEffect(() => {
-    loadDetail();
-  }, [stockName]);
-
-  const loadDetail = async () => {
+  const loadDetail = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -34,7 +30,11 @@ const StockDetail = ({ stockName, onBack }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [stockName]);
+
+  useEffect(() => {
+    loadDetail();
+  }, [loadDetail]);
 
   const formatCurrency = (amount) => {
     if (!amount) return '0.00';
