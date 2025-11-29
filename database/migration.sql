@@ -175,3 +175,53 @@ SET @sql = IF(@fk_exists = 0,
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+-- 9. 创建股票公司行为表（分红、合股等）（如果不存在）
+CREATE TABLE IF NOT EXISTS stock_corporate_actions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    stock_name VARCHAR(100) NOT NULL COMMENT '股票名称',
+    action_type ENUM('DIVIDEND', 'SPLIT', 'REVERSE_SPLIT') NOT NULL COMMENT '行为类型：DIVIDEND=分红, SPLIT=合股/拆股, REVERSE_SPLIT=反向合股',
+    action_date DATE NOT NULL COMMENT '行为日期',
+    ratio DECIMAL(10, 4) DEFAULT NULL COMMENT '合股比例（如1:2表示2股合1股，1:0.5表示1股拆成2股）',
+    amount DECIMAL(12, 5) DEFAULT NULL COMMENT '分红金额（每股）',
+    total_amount DECIMAL(12, 2) DEFAULT NULL COMMENT '总分红金额',
+    notes TEXT COMMENT '备注',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    INDEX idx_stock_name (stock_name),
+    INDEX idx_action_date (action_date),
+    INDEX idx_action_type (action_type),
+    FOREIGN KEY (stock_name) REFERENCES stocks(name) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='股票公司行为表（分红、合股等）';
+
+-- 10. 修改amount字段精度为5位小数（如果表已存在且字段精度不是5）
+SET @table_exists = (
+    SELECT COUNT(*) 
+    FROM information_schema.TABLES 
+    WHERE TABLE_SCHEMA = 'stock_trading' 
+    AND TABLE_NAME = 'stock_corporate_actions'
+);
+
+SET @col_exists = (
+    SELECT COUNT(*) 
+    FROM information_schema.COLUMNS 
+    WHERE TABLE_SCHEMA = 'stock_trading' 
+    AND TABLE_NAME = 'stock_corporate_actions' 
+    AND COLUMN_NAME = 'amount'
+);
+
+SET @col_precision = (
+    SELECT NUMERIC_SCALE
+    FROM information_schema.COLUMNS 
+    WHERE TABLE_SCHEMA = 'stock_trading' 
+    AND TABLE_NAME = 'stock_corporate_actions' 
+    AND COLUMN_NAME = 'amount'
+);
+
+SET @sql = IF(@table_exists > 0 AND @col_exists > 0 AND @col_precision != 5,
+    'ALTER TABLE stock_corporate_actions MODIFY COLUMN amount DECIMAL(12, 5) DEFAULT NULL COMMENT \'分红金额（每股）\'',
+    'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

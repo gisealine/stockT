@@ -3,6 +3,7 @@ const cors = require('cors');
 const db = require('./config/database');
 const transactionsRouter = require('./routes/transactions');
 const stocksRouter = require('./routes/stocks');
+const stockCorporateActionsRouter = require('./routes/stockCorporateActions');
 require('dotenv').config();
 
 const app = express();
@@ -16,6 +17,7 @@ app.use(express.urlencoded({ extended: true }));
 // 路由
 app.use('/api/transactions', transactionsRouter);
 app.use('/api/stocks', stocksRouter);
+app.use('/api/stock-corporate-actions', stockCorporateActionsRouter);
 
 // 健康检查
 app.get('/api/health', (req, res) => {

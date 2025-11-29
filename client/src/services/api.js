@@ -54,6 +54,27 @@ export const stocksAPI = {
   delete: (id) => api.delete(`/stocks/${id}`),
 };
 
+// 股票公司行为API（分红、合股等）
+export const stockCorporateActionsAPI = {
+  // 获取所有公司行为记录
+  getAll: () => api.get('/stock-corporate-actions'),
+  
+  // 根据股票名称获取公司行为记录
+  getByStock: (stockName) => api.get(`/stock-corporate-actions/stock/${encodeURIComponent(stockName)}`),
+  
+  // 获取单条记录
+  getById: (id) => api.get(`/stock-corporate-actions/${id}`),
+  
+  // 创建公司行为记录
+  create: (data) => api.post('/stock-corporate-actions', data),
+  
+  // 更新公司行为记录
+  update: (id, data) => api.put(`/stock-corporate-actions/${id}`, data),
+  
+  // 删除公司行为记录
+  delete: (id) => api.delete(`/stock-corporate-actions/${id}`),
+};
+
 // 健康检查
 export const healthCheck = () => api.get('/health');
 

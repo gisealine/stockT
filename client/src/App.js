@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import TransactionForm from './components/TransactionForm';
 import StockManagement from './components/StockManagement';
 import StockDetail from './components/StockDetail';
+import StockCorporateActions from './components/StockCorporateActions';
 import { transactionsAPI, stocksAPI } from './services/api';
 import { getCurrencySymbol } from './utils/currency';
 import './App.css';
@@ -11,6 +12,7 @@ const PAGE_TYPES = {
   TRANSACTIONS: 'transactions',
   STOCK_MANAGEMENT: 'stock_management',
   STOCK_DETAIL: 'stock_detail',
+  STOCK_CORPORATE_ACTIONS: 'stock_corporate_actions',
 };
 
 function App() {
@@ -88,6 +90,10 @@ function App() {
     setCurrentPage(PAGE_TYPES.TRANSACTIONS);
   };
 
+  const handleNavigateToStockCorporateActions = () => {
+    setCurrentPage(PAGE_TYPES.STOCK_CORPORATE_ACTIONS);
+  };
+
   const handleViewStockDetail = (stockName) => {
     setSelectedStockName(stockName);
     setCurrentPage(PAGE_TYPES.STOCK_DETAIL);
@@ -101,6 +107,9 @@ function App() {
       
       case PAGE_TYPES.STOCK_DETAIL:
         return <StockDetail stockName={selectedStockName} onBack={handleNavigateToTransactions} />;
+      
+      case PAGE_TYPES.STOCK_CORPORATE_ACTIONS:
+        return <StockCorporateActions onBack={handleNavigateToTransactions} />;
       
       case PAGE_TYPES.TRANSACTIONS:
       default:
@@ -196,6 +205,9 @@ function App() {
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <button className="button" onClick={handleNavigateToStockManagement}>
                 📋 股票管理
+              </button>
+              <button className="button" onClick={handleNavigateToStockCorporateActions}>
+                💰 分红/合股管理
               </button>
             </div>
           </div>
