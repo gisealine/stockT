@@ -225,3 +225,36 @@ SET @sql = IF(@table_exists > 0 AND @col_exists > 0 AND @col_precision != 5,
 PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+-- 11. 添加原始交易数量和原始交易价格字段（如果不存在）
+SET @col_exists_original_quantity = (
+    SELECT COUNT(*) 
+    FROM information_schema.COLUMNS 
+    WHERE TABLE_SCHEMA = 'stock_trading' 
+    AND TABLE_NAME = 'transactions' 
+    AND COLUMN_NAME = 'original_quantity'
+);
+
+SET @sql = IF(@col_exists_original_quantity = 0, 
+    'ALTER TABLE transactions ADD COLUMN original_quantity INT DEFAULT NULL COMMENT \'原始交易数量（股）\' AFTER price', 
+    'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @col_exists_original_price = (
+    SELECT COUNT(*) 
+    FROM information_schema.COLUMNS 
+    WHERE TABLE_SCHEMA = 'stock_trading' 
+    AND TABLE_NAME = 'transactions' 
+    AND COLUMN_NAME = 'original_price'
+);
+
+SET @sql = IF(@col_exists_original_price = 0, 
+    'ALTER TABLE transactions ADD COLUMN original_price DECIMAL(10, 2) DEFAULT NULL COMMENT \'原始交易价格\' AFTER original_quantity', 
+    'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

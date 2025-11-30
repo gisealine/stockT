@@ -3,7 +3,7 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { registerLocale } from 'react-datepicker';
 import zhCN from 'date-fns/locale/zh-CN';
-import { stockCorporateActionsAPI, stocksAPI } from '../services/api';
+import { stockCorporateActionsAPI, stocksAPI, syncAPI } from '../services/api';
 import { format } from 'date-fns';
 import { getCurrencySymbol } from '../utils/currency';
 
@@ -26,6 +26,8 @@ const StockCorporateActions = ({ onBack }) => {
   });
   const [saving, setSaving] = useState(false);
   const [filterStock, setFilterStock] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState(null);
 
   // 加载数据
   const loadData = useCallback(async () => {
@@ -182,6 +184,33 @@ const StockCorporateActions = ({ onBack }) => {
     return stock?.stock_type || 'A股';
   };
 
+  // 处理同步
+  const handleSync = async (stockName) => {
+    if (!stockName) {
+      setError('请先选择要同步的股票');
+      return;
+    }
+
+    if (!window.confirm(`确定要同步 ${stockName} 的交易记录吗？将根据分红/合股信息调整该股票的交易数量和价格。`)) {
+      return;
+    }
+
+    setSyncing(true);
+    setSyncMessage(null);
+    setError(null);
+
+    try {
+      const response = await syncAPI.syncTransactions(stockName);
+      setSyncMessage(response.data.message || '同步成功');
+      // 可以选择重新加载数据，但交易记录不在这个页面显示，所以不需要
+    } catch (err) {
+      setError(err.response?.data?.message || '同步失败');
+      console.error('同步失败:', err);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   // 过滤记录
   const filteredRecords = filterStock 
     ? records.filter(r => r.stock_name === filterStock)
@@ -216,6 +245,11 @@ const StockCorporateActions = ({ onBack }) => {
         </div>
 
         {error && <div className="error">{error}</div>}
+        {syncMessage && (
+          <div className="success" style={{ marginBottom: '20px' }}>
+            {syncMessage}
+          </div>
+        )}
 
         {showForm && (
           <div style={{ marginBottom: '20px', padding: '20px', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
@@ -337,21 +371,38 @@ const StockCorporateActions = ({ onBack }) => {
           </div>
         )}
 
-        {/* 过滤 */}
+        {/* 过滤和同步 */}
         {!showForm && (
-          <div className="form-group" style={{ marginBottom: '20px' }}>
-            <label htmlFor="filter_stock">筛选股票：</label>
-            <select
-              id="filter_stock"
-              value={filterStock}
-              onChange={(e) => setFilterStock(e.target.value)}
-              style={{ width: '100%', maxWidth: '300px', padding: '10px', fontSize: '16px' }}
-            >
-              <option value="">全部股票</option>
-              {stocks.map(stock => (
-                <option key={stock.id} value={stock.name}>{stock.name}</option>
-              ))}
-            </select>
+          <div style={{ marginBottom: '20px', display: 'flex', gap: '20px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <div className="form-group" style={{ marginBottom: 0, flex: '1', minWidth: '200px' }}>
+              <label htmlFor="filter_stock">筛选股票：</label>
+              <select
+                id="filter_stock"
+                value={filterStock}
+                onChange={(e) => {
+                  setFilterStock(e.target.value);
+                  setSyncMessage(null);
+                }}
+                style={{ width: '100%', padding: '10px', fontSize: '16px' }}
+              >
+                <option value="">全部股票</option>
+                {stocks.map(stock => (
+                  <option key={stock.id} value={stock.name}>{stock.name}</option>
+                ))}
+              </select>
+            </div>
+            {filterStock && (
+              <div>
+                <button
+                  className="button button-success"
+                  onClick={() => handleSync(filterStock)}
+                  disabled={syncing}
+                  style={{ marginTop: '25px' }}
+                >
+                  {syncing ? '同步中...' : '🔄 同步信息'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 

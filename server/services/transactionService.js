@@ -173,12 +173,12 @@ class TransactionService {
       // 如果没有多仓或平仓后还有剩余，剩余部分开空仓，不计算盈亏
     }
 
-    // 插入交易记录
+    // 插入交易记录（保存原始数量和价格）
     const [result] = await db.execute(
       `INSERT INTO transactions 
-       (stock_name, transaction_type, quantity, price, transaction_date, total_amount, commission, tax, profit_loss, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [stock_name, transaction_type, quantity, price, transaction_date, total_amount, calculatedCommission, calculatedTax, profit_loss, notes || null]
+       (stock_name, transaction_type, quantity, price, original_quantity, original_price, transaction_date, total_amount, commission, tax, profit_loss, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [stock_name, transaction_type, quantity, price, quantity, price, transaction_date, total_amount, calculatedCommission, calculatedTax, profit_loss, notes || null]
     );
 
     // 返回新创建的记录
@@ -486,18 +486,25 @@ class TransactionService {
       }
     }
 
-    const total_amount = parseFloat(((quantity || existing.quantity) * (price || existing.price)).toFixed(2));
+    const total_amount = parseFloat((finalQuantity * finalPrice).toFixed(2));
 
     // 计算手续费和税费
     const { commission: calculatedCommission, tax: calculatedTax } = 
       this.calculateCommissionAndTax(stock.stock_type, finalType, total_amount, commission);
-
+    
+    // 如果原始值不存在，使用当前值（或新值）初始化原始值
+    // 如果原始值已存在，保持不变
+    const originalQty = existing.original_quantity !== null ? existing.original_quantity : finalQuantity;
+    const originalPrice = existing.original_price !== null ? parseFloat(existing.original_price) : finalPrice;
+    
     await db.execute(
       `UPDATE transactions SET
        stock_name = ?,
        transaction_type = ?,
        quantity = ?,
        price = ?,
+       original_quantity = ?,
+       original_price = ?,
        transaction_date = ?,
        total_amount = ?,
        commission = ?,
@@ -508,8 +515,10 @@ class TransactionService {
       [
         stock_name || existing.stock_name,
         transaction_type || existing.transaction_type,
-        quantity || existing.quantity,
-        price || existing.price,
+        finalQuantity,
+        finalPrice,
+        originalQty,
+        originalPrice,
         transaction_date || existing.transaction_date,
         total_amount,
         calculatedCommission,

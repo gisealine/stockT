@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     transaction_type ENUM('BUY', 'SELL') NOT NULL COMMENT '交易类型：买入/卖出',
     quantity INT NOT NULL COMMENT '交易数量（股）',
     price DECIMAL(10, 2) NOT NULL COMMENT '交易价格',
+    original_quantity INT DEFAULT NULL COMMENT '原始交易数量（股）',
+    original_price DECIMAL(10, 2) DEFAULT NULL COMMENT '原始交易价格',
     transaction_date DATE NOT NULL COMMENT '交易日期',
     total_amount DECIMAL(12, 2) NOT NULL COMMENT '交易总金额',
     commission DECIMAL(12, 2) DEFAULT 0 COMMENT '手续费',

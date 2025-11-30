@@ -75,6 +75,12 @@ export const stockCorporateActionsAPI = {
   delete: (id) => api.delete(`/stock-corporate-actions/${id}`),
 };
 
+// 同步API
+export const syncAPI = {
+  // 同步交易记录（根据分红合股信息）
+  syncTransactions: (stockName) => api.post(`/sync/${encodeURIComponent(stockName)}`),
+};
+
 // 健康检查
 export const healthCheck = () => api.get('/health');
 
