@@ -164,7 +164,7 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
     try {
       const submitData = {
         ...formData,
-        quantity: parseInt(formData.quantity),
+        quantity: parseFloat(formData.quantity),
         price: parseFloat(formData.price),
         transaction_date: formatDate(formData.transaction_date),
       };
@@ -291,9 +291,9 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
               name="quantity"
               value={formData.quantity}
               onChange={handleChange}
-              placeholder="例如：100"
-              min="1"
-              step="1"
+              step="0.0001"
+              min="0"
+              placeholder="例如：100 或 33.3333（支持小数）"
             />
             {errors.quantity && <div style={{ color: 'red', fontSize: '14px', marginTop: '5px' }}>{errors.quantity}</div>}
           </div>

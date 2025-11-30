@@ -236,7 +236,7 @@ SET @col_exists_original_quantity = (
 );
 
 SET @sql = IF(@col_exists_original_quantity = 0, 
-    'ALTER TABLE transactions ADD COLUMN original_quantity INT DEFAULT NULL COMMENT \'原始交易数量（股）\' AFTER price', 
+    'ALTER TABLE transactions ADD COLUMN original_quantity DECIMAL(12, 4) DEFAULT NULL COMMENT \'原始交易数量（股，支持小数）\' AFTER price', 
     'SELECT 1'
 );
 PREPARE stmt FROM @sql;
@@ -253,6 +253,40 @@ SET @col_exists_original_price = (
 
 SET @sql = IF(@col_exists_original_price = 0, 
     'ALTER TABLE transactions ADD COLUMN original_price DECIMAL(10, 2) DEFAULT NULL COMMENT \'原始交易价格\' AFTER original_quantity', 
+    'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 12. 修改quantity字段类型为DECIMAL以支持小数（合股时可能产生碎股）
+SET @col_data_type = (
+    SELECT DATA_TYPE
+    FROM information_schema.COLUMNS 
+    WHERE TABLE_SCHEMA = 'stock_trading' 
+    AND TABLE_NAME = 'transactions' 
+    AND COLUMN_NAME = 'quantity'
+);
+
+SET @sql = IF(@col_data_type = 'int',
+    'ALTER TABLE transactions MODIFY COLUMN quantity DECIMAL(12, 4) NOT NULL COMMENT \'交易数量（股，支持小数）\'',
+    'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- 13. 修改original_quantity字段类型为DECIMAL以支持小数（如果已存在）
+SET @col_data_type_original = (
+    SELECT DATA_TYPE
+    FROM information_schema.COLUMNS 
+    WHERE TABLE_SCHEMA = 'stock_trading' 
+    AND TABLE_NAME = 'transactions' 
+    AND COLUMN_NAME = 'original_quantity'
+);
+
+SET @sql = IF(@col_data_type_original = 'int',
+    'ALTER TABLE transactions MODIFY COLUMN original_quantity DECIMAL(12, 4) DEFAULT NULL COMMENT \'原始交易数量（股，支持小数）\'',
     'SELECT 1'
 );
 PREPARE stmt FROM @sql;

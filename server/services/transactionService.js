@@ -492,10 +492,11 @@ class TransactionService {
     const { commission: calculatedCommission, tax: calculatedTax } = 
       this.calculateCommissionAndTax(stock.stock_type, finalType, total_amount, commission);
     
-    // 如果原始值不存在，使用当前值（或新值）初始化原始值
-    // 如果原始值已存在，保持不变
-    const originalQty = existing.original_quantity !== null ? existing.original_quantity : finalQuantity;
-    const originalPrice = existing.original_price !== null ? parseFloat(existing.original_price) : finalPrice;
+    // 原始值在创建时已设置，更新时不允许修改
+    // 确保原始值存在，如果不存在则抛出错误（理论上不应该发生）
+    if (existing.original_quantity === null || existing.original_price === null) {
+      throw new Error('原始数量或原始价格为空，无法更新交易记录。请先删除并重新创建。');
+    }
     
     await db.execute(
       `UPDATE transactions SET
@@ -503,8 +504,6 @@ class TransactionService {
        transaction_type = ?,
        quantity = ?,
        price = ?,
-       original_quantity = ?,
-       original_price = ?,
        transaction_date = ?,
        total_amount = ?,
        commission = ?,
@@ -517,8 +516,6 @@ class TransactionService {
         transaction_type || existing.transaction_type,
         finalQuantity,
         finalPrice,
-        originalQty,
-        originalPrice,
         transaction_date || existing.transaction_date,
         total_amount,
         calculatedCommission,
