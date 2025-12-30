@@ -20,8 +20,8 @@ function calculateCommissionAndTax(stockType, transactionType, totalAmount, comm
   let calculatedTax = 0;
 
   if (stockType === 'A股') {
-    // A股：手续费万1.5（买入卖出都收），税费万分之5（只有卖出收）
-    calculatedCommission = amount * 0.00015; // 万1.5
+    // A股：手续费万1.2（买入卖出都收），税费万分之5（只有卖出收）
+    calculatedCommission = amount * 0.00012; // 万1.2
     if (transactionType === 'SELL') {
       calculatedTax = amount * 0.0005; // 万分之5 = 5/10000 = 0.0005
     }

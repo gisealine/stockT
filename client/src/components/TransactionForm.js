@@ -84,6 +84,24 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
     }
   };
 
+  // 处理数量输入框失去焦点，A股买入时自动调整为100的倍数
+  const handleQuantityBlur = (e) => {
+    const value = e.target.value;
+    if (selectedStock && selectedStock.stock_type === 'A股' && formData.transaction_type === 'BUY') {
+      const numValue = parseFloat(value);
+      if (!isNaN(numValue) && numValue > 0) {
+        // 向下取整到最接近的100的倍数
+        const adjustedValue = Math.floor(numValue / 100) * 100;
+        if (adjustedValue > 0 && adjustedValue !== numValue) {
+          setFormData((prev) => ({
+            ...prev,
+            quantity: adjustedValue.toString(),
+          }));
+        }
+      }
+    }
+  };
+
   const handleDateChange = (date) => {
     setFormData((prev) => ({
       ...prev,
@@ -105,7 +123,7 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
     let tax = 0;
 
     if (stockType === 'A股') {
-      commission = totalAmount * 0.00015; // 万1.5
+      commission = totalAmount * 0.00012; // 万1.2
       if (transactionType === 'SELL') {
         tax = totalAmount * 0.0005; // 万分之5 = 5/10000 = 0.0005
       }
@@ -132,6 +150,14 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
 
     if (!formData.quantity || parseFloat(formData.quantity) <= 0) {
       newErrors.quantity = '请输入有效的数量';
+    } else {
+      const qty = parseFloat(formData.quantity);
+      // A股买入股数必须是100的倍数
+      if (selectedStock && selectedStock.stock_type === 'A股' && formData.transaction_type === 'BUY') {
+        if (qty % 100 !== 0) {
+          newErrors.quantity = 'A股买入股数必须是100的倍数';
+        }
+      }
     }
 
     if (!formData.price || parseFloat(formData.price) <= 0) {
@@ -284,6 +310,11 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
           <div className="form-group">
             <label htmlFor="quantity">
               数量（股） <span style={{ color: 'red' }}>*</span>
+              {selectedStock && selectedStock.stock_type === 'A股' && formData.transaction_type === 'BUY' && (
+                <span style={{ fontSize: '12px', color: '#666', marginLeft: '5px', fontWeight: 'normal' }}>
+                  （必须是100的倍数）
+                </span>
+              )}
             </label>
             <input
               type="number"
@@ -291,9 +322,10 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
               name="quantity"
               value={formData.quantity}
               onChange={handleChange}
-              step="0.0001"
+              onBlur={handleQuantityBlur}
+              step={selectedStock && selectedStock.stock_type === 'A股' && formData.transaction_type === 'BUY' ? '100' : '0.0001'}
               min="0"
-              placeholder="例如：100 或 33.3333（支持小数）"
+              placeholder={'如100'}
             />
             {errors.quantity && <div style={{ color: 'red', fontSize: '14px', marginTop: '5px' }}>{errors.quantity}</div>}
           </div>
@@ -343,7 +375,7 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
                   <div style={{ padding: '10px', backgroundColor: '#f0f0f0', borderRadius: '4px', fontSize: '16px' }}>
                     {getCurrencySymbol(selectedStock.stock_type)}{calculateCommissionAndTax().commission.toFixed(2)}
                     <span style={{ fontSize: '12px', color: '#666', marginLeft: '5px' }}>
-                      ({selectedStock.stock_type === 'A股' ? '万1.5' : '万2'})
+                      ({selectedStock.stock_type === 'A股' ? '万1.2' : '万2'})
                     </span>
                   </div>
                 </div>

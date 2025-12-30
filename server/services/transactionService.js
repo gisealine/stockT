@@ -142,6 +142,17 @@ class TransactionService {
       throw new Error('股票不存在');
     }
 
+    // A股特殊验证
+    if (stock.stock_type === 'A股') {
+      // A股买入股数必须是100的倍数
+      if (transaction_type === 'BUY') {
+        const qty = parseFloat(quantity);
+        if (qty % 100 !== 0) {
+          throw new Error('A股买入股数必须是100的倍数');
+        }
+      }
+    }
+
     // 计算总金额
     const total_amount = parseFloat((quantity * price).toFixed(2));
 
@@ -151,6 +162,14 @@ class TransactionService {
 
     // 获取当前持仓状态
     const position = await this.getCurrentPosition(stock_name);
+
+    // A股不能卖空验证
+    if (stock.stock_type === 'A股' && transaction_type === 'SELL') {
+      const sellQty = parseFloat(quantity);
+      if (sellQty > position.longPosition) {
+        throw new Error(`A股不能卖空，当前持仓：${position.longPosition}股，卖出数量：${sellQty}股`);
+      }
+    }
 
     // 计算盈亏
     let profit_loss = 0;
@@ -468,8 +487,27 @@ class TransactionService {
       throw new Error('股票不存在');
     }
 
+    // A股特殊验证
+    if (stock.stock_type === 'A股') {
+      // A股买入股数必须是100的倍数
+      if (finalType === 'BUY') {
+        const qty = parseFloat(finalQuantity);
+        if (qty % 100 !== 0) {
+          throw new Error('A股买入股数必须是100的倍数');
+        }
+      }
+    }
+
     // 获取当前持仓状态（排除当前记录）
     const position = await this.getCurrentPositionExcluding(finalStockName, existing.id);
+
+    // A股不能卖空验证
+    if (stock.stock_type === 'A股' && finalType === 'SELL') {
+      const sellQty = parseFloat(finalQuantity);
+      if (sellQty > position.longPosition) {
+        throw new Error(`A股不能卖空，当前持仓：${position.longPosition}股，卖出数量：${sellQty}股`);
+      }
+    }
 
     const finalTransactionDate = transaction_date || existing.transaction_date;
     const finalCreatedAt = existing.created_at;
