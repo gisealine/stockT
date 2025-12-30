@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const db = require('./config/database');
 const transactionsRouter = require('./routes/transactions');
 const stocksRouter = require('./routes/stocks');
@@ -15,7 +16,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// 路由
+// API 路由（必须在静态文件之前）
 app.use('/api/transactions', transactionsRouter);
 app.use('/api/stocks', stocksRouter);
 app.use('/api/stock-corporate-actions', stockCorporateActionsRouter);
@@ -36,6 +37,16 @@ app.get('/api/test-db', async (req, res) => {
   }
 });
 
+// 生产环境：提供静态文件（React构建后的文件）
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../client/build')));
+  
+  // 所有非API请求返回React应用（必须在最后）
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/build/index.html'));
+  });
+}
+
 // 错误处理中间件
 app.use((err, req, res, next) => {
   console.error(err.stack);
@@ -48,5 +59,9 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`服务器运行在端口 ${PORT}`);
+  console.log(`环境: ${process.env.NODE_ENV || 'development'}`);
+  if (process.env.NODE_ENV === 'production') {
+    console.log('生产模式：前端文件已集成到服务器');
+  }
 });
 
