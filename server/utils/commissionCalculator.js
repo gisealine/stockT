@@ -23,7 +23,7 @@ function calculateCommissionAndTax(stockType, transactionType, totalAmount, comm
     // A股：手续费万1.5（买入卖出都收），税费万分之5（只有卖出收）
     calculatedCommission = amount * 0.00015; // 万1.5
     if (transactionType === 'SELL') {
-      calculatedTax = amount * 0.00005; // 万分之5
+      calculatedTax = amount * 0.0005; // 万分之5 = 5/10000 = 0.0005
     }
   } else if (stockType === '港股') {
     // 港股：手续费万2（买入卖出都收），税费千分之1（买入卖出都收）

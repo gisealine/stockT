@@ -107,7 +107,7 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
     if (stockType === 'A股') {
       commission = totalAmount * 0.00015; // 万1.5
       if (transactionType === 'SELL') {
-        tax = totalAmount * 0.00005; // 万分之5
+        tax = totalAmount * 0.0005; // 万分之5 = 5/10000 = 0.0005
       }
     } else if (stockType === '港股') {
       commission = totalAmount * 0.0002; // 万2
