@@ -42,12 +42,25 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
 
   useEffect(() => {
     if (transaction) {
+      // 解析日期时间字符串
+      let transactionDate = new Date();
+      if (transaction.transaction_date) {
+        // 如果包含时间，直接解析；否则添加默认时间
+        const dateStr = transaction.transaction_date;
+        if (dateStr.includes(' ') && dateStr.includes(':')) {
+          transactionDate = new Date(dateStr);
+        } else {
+          // 只有日期，添加默认时间 00:00:00
+          transactionDate = new Date(dateStr + ' 00:00:00');
+        }
+      }
+      
       setFormData({
         stock_name: transaction.stock_name || '',
         transaction_type: transaction.transaction_type || 'BUY',
         quantity: transaction.quantity || '',
         price: transaction.price || '',
-        transaction_date: transaction.transaction_date ? new Date(transaction.transaction_date) : new Date(),
+        transaction_date: transactionDate,
         notes: transaction.notes || '',
         commission: transaction.commission || '',
       });
@@ -226,7 +239,10 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
   };
 
   return (
@@ -297,7 +313,10 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
             <DatePicker
               selected={formData.transaction_date}
               onChange={handleDateChange}
-              dateFormat="yyyy-MM-dd"
+              showTimeSelect
+              timeFormat="HH:mm:ss"
+              timeIntervals={1}
+              dateFormat="yyyy-MM-dd HH:mm:ss"
               locale="zhCN"
               className="form-control"
               wrapperClassName="date-picker-wrapper"
@@ -307,6 +326,23 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
         </div>
 
         <div className="form-row">
+        <div className="form-group">
+            <label htmlFor="price">
+              价格（元） <span style={{ color: 'red' }}>*</span>
+            </label>
+            <input
+              type="number"
+              id="price"
+              name="price"
+              value={formData.price}
+              onChange={handleChange}
+              placeholder="例如：10.50"
+              min="0"
+              step="0.01"
+            />
+            {errors.price && <div style={{ color: 'red', fontSize: '14px', marginTop: '5px' }}>{errors.price}</div>}
+          </div>
+
           <div className="form-group">
             <label htmlFor="quantity">
               数量（股） <span style={{ color: 'red' }}>*</span>
@@ -328,23 +364,6 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
               placeholder={'如100'}
             />
             {errors.quantity && <div style={{ color: 'red', fontSize: '14px', marginTop: '5px' }}>{errors.quantity}</div>}
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="price">
-              价格（元） <span style={{ color: 'red' }}>*</span>
-            </label>
-            <input
-              type="number"
-              id="price"
-              name="price"
-              value={formData.price}
-              onChange={handleChange}
-              placeholder="例如：10.50"
-              min="0"
-              step="0.01"
-            />
-            {errors.price && <div style={{ color: 'red', fontSize: '14px', marginTop: '5px' }}>{errors.price}</div>}
           </div>
         </div>
 

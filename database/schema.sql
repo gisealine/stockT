@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     price DECIMAL(10, 2) NOT NULL COMMENT '交易价格',
     original_quantity DECIMAL(12, 4) DEFAULT NULL COMMENT '原始交易数量（股，支持小数）',
     original_price DECIMAL(10, 2) DEFAULT NULL COMMENT '原始交易价格',
-    transaction_date DATE NOT NULL COMMENT '交易日期',
+    transaction_date DATETIME NOT NULL COMMENT '交易日期（包含时分秒）',
     total_amount DECIMAL(12, 2) NOT NULL COMMENT '交易总金额',
     commission DECIMAL(12, 2) DEFAULT 0 COMMENT '手续费',
     tax DECIMAL(12, 2) DEFAULT 0 COMMENT '税费',
