@@ -264,28 +264,28 @@ const TransactionForm = ({ transaction, onSave, onCancel }) => {
             <label>
               交易类型 <span style={{ color: 'red' }}>*</span>
             </label>
-            <div style={{ display: 'flex', gap: '20px', marginTop: '10px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+            <div style={{ display: 'flex', gap: '20px', marginTop: '10px', flexDirection: 'row' }}>
+              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 <input
                   type="radio"
                   name="transaction_type"
                   value="BUY"
                   checked={formData.transaction_type === 'BUY'}
                   onChange={handleChange}
-                  style={{ marginRight: '5px' }}
+                  style={{ marginRight: '5px', flexShrink: 0, width: 'auto' }}
                 />
-                买入
+                <span>买入</span>
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 <input
                   type="radio"
                   name="transaction_type"
                   value="SELL"
                   checked={formData.transaction_type === 'SELL'}
                   onChange={handleChange}
-                  style={{ marginRight: '5px' }}
+                  style={{ marginRight: '5px', flexShrink: 0, width: 'auto' }}
                 />
-                卖出
+                <span>卖出</span>
               </label>
             </div>
           </div>
