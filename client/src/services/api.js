@@ -1,6 +1,22 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+// 生产环境使用相对路径，开发环境使用 localhost
+const getApiBaseUrl = () => {
+  // 如果设置了环境变量，优先使用
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+  
+  // 生产环境（已构建）使用相对路径
+  // 开发环境使用 localhost
+  if (process.env.NODE_ENV === 'production') {
+    return '/api';
+  }
+  
+  return 'http://localhost:5000/api';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 const api = axios.create({
   baseURL: API_BASE_URL,

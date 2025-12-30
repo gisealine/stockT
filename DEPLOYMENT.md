@@ -26,7 +26,24 @@ cd ..
 pnpm install && cd client && pnpm install && cd ..
 ```
 
-### 2. 构建前端应用
+### 2. 配置前端环境变量（可选）
+
+如果需要自定义 API 地址，在 `client` 目录创建 `.env` 或 `.env.production` 文件：
+
+```env
+# 如果前后端在同一服务器，使用相对路径（默认）
+REACT_APP_API_URL=/api
+
+# 如果前后端分离部署，使用完整 URL
+# REACT_APP_API_URL=http://your-api-server:5000/api
+```
+
+**注意：**
+- 如果不设置，生产环境默认使用相对路径 `/api`（前后端同域）
+- 开发环境默认使用 `http://localhost:5000/api`
+- 如果前后端分离部署，需要设置完整的 API 地址
+
+### 3. 构建前端应用
 
 ```bash
 cd client
@@ -42,7 +59,7 @@ pnpm run build
 
 构建完成后，前端文件会生成在 `client/build` 目录中。
 
-### 3. 配置环境变量
+### 4. 配置后端环境变量
 
 在项目根目录创建或修改 `.env` 文件：
 
@@ -63,13 +80,13 @@ PORT=5000
 - `DB_NAME`：数据库名称
 - `PORT`：服务器端口（默认 5000）
 
-### 4. 初始化数据库（如果尚未初始化）
+### 5. 初始化数据库（如果尚未初始化）
 
 ```bash
 mysql -u root -p < database/schema.sql
 ```
 
-### 5. 启动服务器
+### 6. 启动服务器
 
 #### 方式一：直接启动（推荐用于测试）
 
